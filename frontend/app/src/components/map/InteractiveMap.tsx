@@ -5,6 +5,7 @@ import Map, {
 } from "react-map-gl/mapbox";
 import { AlertTriangle, Activity, Map as MapIcon, Clock3 } from "lucide-react";
 import "mapbox-gl/dist/mapbox-gl.css";
+import { Ship } from "lucide-react";
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN as
   | string
@@ -42,10 +43,10 @@ const dashboardCards = [
     iconBgClass: "bg-status-info/14",
   },
   {
-    id: "last-update",
-    title: "Last Update",
-    value: "15:25:55",
-    icon: Clock3,
+    id: "vessels-tracked",
+    title: "Vessels Tracked",
+    value: "1,248",
+    icon: Ship,
     iconClass: "text-accent",
     iconBgClass: "bg-accent-soft",
   },
@@ -78,24 +79,28 @@ export function InteractiveMap() {
             return (
               <article
                 key={card.id}
-                className="flex min-h-32 items-center gap-5 rounded-2xl border border-border-subtle bg-bg-panel px-6 py-5 shadow-panel"
+                className="flex flex-col gap-3 rounded-xl border border-border-subtle bg-bg-panel px-4 py-3 shadow-panel"
               >
-                <div
-                  className={`flex size-16 shrink-0 items-center justify-center rounded-xl ${card.iconBgClass}`}
-                >
-                  <Icon
-                    className={`size-8 ${card.iconClass}`}
-                    strokeWidth={2.2}
-                  />
+                <div className="flex items-center gap-3">
+                  <div
+                    className={`flex size-10 shrink-0 items-center justify-center rounded-lg ${card.iconBgClass}`}
+                  >
+                    <Icon
+                      className={`size-5 ${card.iconClass}`}
+                      strokeWidth={2.2}
+                    />
+                  </div>
+
+                  <div className="min-w-0">
+                    <p className="text-xs text-text-muted">{card.title}</p>
+                    <p className="mt-0.5 text-2xl font-semibold tracking-tight text-text-primary">
+                      {card.value}
+                    </p>
+                  </div>
                 </div>
 
-                <div className="min-w-0">
-                  <p className="text-sm text-text-muted lg:text-[18px]">
-                    {card.title}
-                  </p>
-                  <p className="mt-1 text-4xl font-semibold tracking-tight text-text-primary">
-                    {card.value}
-                  </p>
+                <div className="border-t border-border-subtle pt-2">
+                  <p className="text-xs text-text-muted">Updated 15:25:55</p>
                 </div>
               </article>
             );
