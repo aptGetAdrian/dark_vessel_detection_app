@@ -3,9 +3,10 @@ import Map, {
   NavigationControl,
   ScaleControl,
 } from "react-map-gl/mapbox";
-import { AlertTriangle, Activity, Map as MapIcon, Clock3 } from "lucide-react";
 import "mapbox-gl/dist/mapbox-gl.css";
-import { Ship } from "lucide-react";
+
+import { StatCard } from "@/components/ui/statCard";
+import { useDashboardCards } from "@/hooks/Usedashboardcards";
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN as
   | string
@@ -17,42 +18,9 @@ const sampleVessels = [
   { id: "v-103", latitude: 36.1699, longitude: -115.1398 },
 ];
 
-const dashboardCards = [
-  {
-    id: "active-vessels",
-    title: "Active Dark Vessels",
-    value: "4",
-    icon: AlertTriangle,
-    iconClass: "text-status-alert",
-    iconBgClass: "bg-status-alert/12",
-  },
-  {
-    id: "high-severity",
-    title: "High Severity Alerts",
-    value: "4",
-    icon: Activity,
-    iconClass: "text-status-warning",
-    iconBgClass: "bg-status-warning/12",
-  },
-  {
-    id: "coverage",
-    title: "Coverage Area",
-    value: "2840K km²",
-    icon: MapIcon,
-    iconClass: "text-status-info",
-    iconBgClass: "bg-status-info/14",
-  },
-  {
-    id: "vessels-tracked",
-    title: "Vessels Tracked",
-    value: "1,248",
-    icon: Ship,
-    iconClass: "text-accent",
-    iconBgClass: "bg-accent-soft",
-  },
-];
-
 export function InteractiveMap() {
+  const { cards, isLoading, error } = useDashboardCards();
+
   if (!MAPBOX_TOKEN) {
     return (
       <section className="flex h-[calc(100vh-3.75rem)] items-center justify-center bg-bg-ocean px-6">
@@ -72,41 +40,26 @@ export function InteractiveMap() {
   return (
     <section className="h-[calc(100vh-3.75rem)] w-full bg-bg-ocean px-6 py-5">
       <div className="flex h-full flex-col gap-5">
+        {/* Stat cards */}
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-          {dashboardCards.map((card) => {
-            const Icon = card.icon;
-
-            return (
-              <article
-                key={card.id}
-                className="flex flex-col gap-3 rounded-xl border border-border-subtle bg-bg-panel px-4 py-3 shadow-panel"
-              >
-                <div className="flex items-center gap-3">
-                  <div
-                    className={`flex size-10 shrink-0 items-center justify-center rounded-lg ${card.iconBgClass}`}
-                  >
-                    <Icon
-                      className={`size-5 ${card.iconClass}`}
-                      strokeWidth={2.2}
-                    />
-                  </div>
-
-                  <div className="min-w-0">
-                    <p className="text-xs text-text-muted">{card.title}</p>
-                    <p className="mt-0.5 text-2xl font-semibold tracking-tight text-text-primary">
-                      {card.value}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="border-t border-border-subtle pt-2">
-                  <p className="text-xs text-text-muted">Updated 15:25:55</p>
-                </div>
-              </article>
-            );
-          })}
+          {isLoading
+            ? Array.from({ length: 4 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="h-[88px] animate-pulse rounded-xl border border-border-subtle bg-bg-panel shadow-panel"
+                />
+              ))
+            : cards.map((card) => <StatCard key={card.id} card={card} />)}
         </div>
 
+        {/* Error banner */}
+        {error && (
+          <p className="text-xs text-status-alert">
+            Failed to load dashboard data — showing last known values.
+          </p>
+        )}
+
+        {/* Map */}
         <div className="min-h-0 flex-1 overflow-hidden rounded-2xl border border-border-subtle bg-bg-panel shadow-panel">
           <Map
             initialViewState={{
