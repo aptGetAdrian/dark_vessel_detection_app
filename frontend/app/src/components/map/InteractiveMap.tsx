@@ -4,9 +4,10 @@ import Map, {
   ScaleControl,
 } from "react-map-gl/mapbox";
 import "mapbox-gl/dist/mapbox-gl.css";
-
 import { StatCard } from "@/components/ui/statCard";
 import { useDashboardCards } from "@/hooks/Usedashboardcards";
+import { RecentAlerts } from "@/components/ui/RecentAlerts";
+import type { VesselAlert } from "@/components/ui/RecentAlerts";
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN as
   | string
@@ -16,6 +17,59 @@ const sampleVessels = [
   { id: "v-101", latitude: 37.7749, longitude: -122.4194 },
   { id: "v-102", latitude: 34.0522, longitude: -118.2437 },
   { id: "v-103", latitude: 36.1699, longitude: -115.1398 },
+];
+
+const sampleAlerts: VesselAlert[] = [
+  {
+    id: "ALT-001",
+    severity: "CRITICAL",
+    status: "NEW",
+    vesselName: "MV AURORA",
+    description: "AIS transponder disabled, SAR detection confirmed",
+    location: "Tyrrhenian Sea",
+    timestamp: new Date("2025-03-31T19:07:00"),
+    confidence: 94,
+  },
+  {
+    id: "ALT-002",
+    severity: "CRITICAL",
+    status: "UNDER REVIEW",
+    vesselName: "NEPTUNE STAR",
+    description: "Dark vessel detected near territorial waters",
+    location: "Strait of Gibraltar",
+    timestamp: new Date("2025-03-31T18:37:00"),
+    confidence: 87,
+  },
+  {
+    id: "ALT-003",
+    severity: "WARNING",
+    status: "NEW",
+    vesselName: "ATLANTIC TRADER",
+    description: "Irregular AIS broadcast pattern detected",
+    location: "Bay of Biscay",
+    timestamp: new Date("2025-03-31T17:55:00"),
+    confidence: 76,
+  },
+  {
+    id: "ALT-004",
+    severity: "WARNING",
+    status: "UNDER REVIEW",
+    vesselName: "PACIFIC DAWN",
+    description: "Unusual course deviation logged",
+    location: "North Sea",
+    timestamp: new Date("2025-03-31T16:40:00"),
+    confidence: 81,
+  },
+  {
+    id: "ALT-005",
+    severity: "INFO",
+    status: "RESOLVED",
+    vesselName: "MERIDIAN",
+    description: "Port arrival delay reported by harbour master",
+    location: "Port of Rotterdam",
+    timestamp: new Date("2025-03-31T15:10:00"),
+    confidence: 99,
+  },
 ];
 
 export function InteractiveMap() {
@@ -59,34 +113,42 @@ export function InteractiveMap() {
           </p>
         )}
 
-        {/* Map */}
-        <div className="min-h-0 flex-1 overflow-hidden rounded-2xl border border-border-subtle bg-bg-panel shadow-panel">
-          <Map
-            initialViewState={{
-              latitude: 36.5,
-              longitude: -121,
-              zoom: 4,
-            }}
-            mapStyle="mapbox://styles/mapbox/dark-v11"
-            mapboxAccessToken={MAPBOX_TOKEN}
-            attributionControl={false}
-            reuseMaps
-            style={{ width: "100%", height: "100%" }}
-          >
-            <NavigationControl position="top-right" />
-            <ScaleControl position="bottom-left" />
+        {/* Map + Alerts row */}
+        <div className="flex min-h-0 flex-1 gap-5">
+          {/* Map */}
+          <div className="min-w-0 flex-1 overflow-hidden rounded-2xl border border-border-subtle bg-bg-panel shadow-panel">
+            <Map
+              initialViewState={{
+                latitude: 36.5,
+                longitude: -121,
+                zoom: 4,
+              }}
+              mapStyle="mapbox://styles/mapbox/dark-v11"
+              mapboxAccessToken={MAPBOX_TOKEN}
+              attributionControl={false}
+              reuseMaps
+              style={{ width: "100%", height: "100%" }}
+            >
+              <NavigationControl position="top-right" />
+              <ScaleControl position="bottom-left" />
+              {sampleVessels.map((vessel) => (
+                <Marker
+                  key={vessel.id}
+                  latitude={vessel.latitude}
+                  longitude={vessel.longitude}
+                  anchor="center"
+                >
+                  <span className="block size-3 rounded-full border border-bg-ocean bg-status-alert" />
+                </Marker>
+              ))}
+            </Map>
+          </div>
 
-            {sampleVessels.map((vessel) => (
-              <Marker
-                key={vessel.id}
-                latitude={vessel.latitude}
-                longitude={vessel.longitude}
-                anchor="center"
-              >
-                <span className="block size-3 rounded-full border border-bg-ocean bg-status-alert" />
-              </Marker>
-            ))}
-          </Map>
+          {/* Recent Alerts panel */}
+          <RecentAlerts
+            alerts={sampleAlerts}
+            className="w-80 shrink-0 overflow-hidden xl:w-96"
+          />
         </div>
       </div>
     </section>
