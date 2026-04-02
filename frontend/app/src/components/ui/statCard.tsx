@@ -1,14 +1,4 @@
-import type { LucideIcon } from "lucide-react";
-
-export interface DashboardCard {
-  id: string;
-  title: string;
-  value: string | number;
-  icon: LucideIcon;
-  iconClass: string;
-  iconBgClass: string;
-  updatedAt: Date;
-}
+import type { DashboardCard } from "@/types/dashboard";
 
 interface StatCardProps {
   card: DashboardCard;

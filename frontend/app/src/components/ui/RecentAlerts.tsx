@@ -1,18 +1,5 @@
 import { MapPin, Clock } from "lucide-react";
-
-export type AlertSeverity = "CRITICAL" | "WARNING" | "INFO";
-export type AlertStatus = "NEW" | "UNDER REVIEW" | "RESOLVED";
-
-export interface VesselAlert {
-  id: string;
-  severity: AlertSeverity;
-  status: AlertStatus;
-  vesselName: string;
-  description: string;
-  location: string;
-  timestamp: Date;
-  confidence: number;
-}
+import type { AlertSeverity, AlertStatus, VesselAlert } from "@/types/dashboard";
 
 interface AlertBadgeProps {
   severity: AlertSeverity;

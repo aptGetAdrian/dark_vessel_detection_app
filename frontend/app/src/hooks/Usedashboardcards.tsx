@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { AlertTriangle, Activity, Map as MapIcon, Ship } from "lucide-react";
-import type { DashboardCard } from "@/components/ui/statCard";
+import type { DashboardCard } from "@/types/dashboard";
 
 const POLL_INTERVAL_MS = 30_000;
 

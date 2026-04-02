@@ -7,7 +7,7 @@ import "mapbox-gl/dist/mapbox-gl.css";
 import { StatCard } from "@/components/ui/statCard";
 import { useDashboardCards } from "@/hooks/Usedashboardcards";
 import { RecentAlerts } from "@/components/ui/RecentAlerts";
-import type { VesselAlert } from "@/components/ui/RecentAlerts";
+import type { VesselAlert } from "@/types/dashboard";
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN as
   | string
