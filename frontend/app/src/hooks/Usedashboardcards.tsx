@@ -1,39 +1,26 @@
 import { useState, useEffect, useCallback } from "react";
 import { AlertTriangle, Activity, Map as MapIcon, Ship } from "lucide-react";
-import type { DashboardCard } from "@/types/dashboard";
+import type { DashboardCard, Vessel } from "@/types/dashboard";
 
+const API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "http://localhost:8080";
 const POLL_INTERVAL_MS = 30_000;
 
-// Replace these fetchers with real API calls when your backend is ready.
-// Each function should return the resolved value for its card.
-async function fetchActiveVessels(): Promise<string> {
-  // e.g. const res = await fetch("/api/vessels/active"); return (await res.json()).count;
-  return "4";
-}
-
-async function fetchHighSeverityAlerts(): Promise<string> {
-  return "4";
-}
-
-async function fetchCoverageArea(): Promise<string> {
-  return "2840K km²";
-}
-
-async function fetchVesselsTracked(): Promise<string> {
-  return "1,248";
+async function fetchJSON<T>(path: string): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`);
+  if (!res.ok) throw new Error(`${path} returned ${res.status}`);
+  return res.json() as Promise<T>;
 }
 
 function buildCards(
-  values: [string, string, string, string],
+  darkCount: number,
+  totalCount: number,
   updatedAt: Date,
 ): DashboardCard[] {
-  const [activeVessels, highSeverity, coverage, vesselsTracked] = values;
-
   return [
     {
       id: "active-vessels",
       title: "Active Dark Vessels",
-      value: activeVessels,
+      value: darkCount,
       icon: AlertTriangle,
       iconClass: "text-status-alert",
       iconBgClass: "bg-status-alert/12",
@@ -42,7 +29,7 @@ function buildCards(
     {
       id: "high-severity",
       title: "High Severity Alerts",
-      value: highSeverity,
+      value: darkCount,
       icon: Activity,
       iconClass: "text-status-warning",
       iconBgClass: "bg-status-warning/12",
@@ -51,7 +38,7 @@ function buildCards(
     {
       id: "coverage",
       title: "Coverage Area",
-      value: coverage,
+      value: "2840K km²",
       icon: MapIcon,
       iconClass: "text-status-info",
       iconBgClass: "bg-status-info/14",
@@ -60,7 +47,7 @@ function buildCards(
     {
       id: "vessels-tracked",
       title: "Vessels Tracked",
-      value: vesselsTracked,
+      value: totalCount,
       icon: Ship,
       iconClass: "text-accent",
       iconBgClass: "bg-accent-soft",
@@ -83,14 +70,12 @@ export function useDashboardCards(): UseDashboardCardsResult {
 
   const fetchAll = useCallback(async () => {
     try {
-      const values = await Promise.all([
-        fetchActiveVessels(),
-        fetchHighSeverityAlerts(),
-        fetchCoverageArea(),
-        fetchVesselsTracked(),
+      const [allVessels, darkVessels] = await Promise.all([
+        fetchJSON<Vessel[]>("/api/v1/vessels"),
+        fetchJSON<Vessel[]>("/api/v1/vessels/dark"),
       ]);
 
-      setCards(buildCards(values, new Date()));
+      setCards(buildCards(darkVessels.length, allVessels.length, new Date()));
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err : new Error("Failed to fetch cards"));

@@ -6,74 +6,41 @@ import Map, {
 import "mapbox-gl/dist/mapbox-gl.css";
 import { StatCard } from "@/components/ui/statCard";
 import { useDashboardCards } from "@/hooks/Usedashboardcards";
+import { useVessels } from "@/hooks/useVessels";
 import { RecentAlerts } from "@/components/ui/RecentAlerts";
-import type { VesselAlert } from "@/types/dashboard";
+import type { VesselAlert, Vessel } from "@/types/dashboard";
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN as
   | string
   | undefined;
 
-const sampleVessels = [
-  { id: "v-101", latitude: 37.7749, longitude: -122.4194 },
-  { id: "v-102", latitude: 34.0522, longitude: -118.2437 },
-  { id: "v-103", latitude: 36.1699, longitude: -115.1398 },
-];
+function darkVesselToAlert(vessel: Vessel, index: number): VesselAlert {
+  const hoursOffline =
+    (Date.now() - new Date(vessel.last_ais).getTime()) / 3_600_000;
 
-const sampleAlerts: VesselAlert[] = [
-  {
-    id: "ALT-001",
-    severity: "CRITICAL",
+  const severity: VesselAlert["severity"] =
+    hoursOffline >= 24 ? "CRITICAL" : "WARNING";
+
+  return {
+    id: `ALT-${String(index + 1).padStart(3, "0")}`,
+    severity,
     status: "NEW",
-    vesselName: "MV AURORA",
-    description: "AIS transponder disabled, SAR detection confirmed",
-    location: "Tyrrhenian Sea",
-    timestamp: new Date("2025-03-31T19:07:00"),
-    confidence: 94,
-  },
-  {
-    id: "ALT-002",
-    severity: "CRITICAL",
-    status: "UNDER REVIEW",
-    vesselName: "NEPTUNE STAR",
-    description: "Dark vessel detected near territorial waters",
-    location: "Strait of Gibraltar",
-    timestamp: new Date("2025-03-31T18:37:00"),
-    confidence: 87,
-  },
-  {
-    id: "ALT-003",
-    severity: "WARNING",
-    status: "NEW",
-    vesselName: "ATLANTIC TRADER",
-    description: "Irregular AIS broadcast pattern detected",
-    location: "Bay of Biscay",
-    timestamp: new Date("2025-03-31T17:55:00"),
-    confidence: 76,
-  },
-  {
-    id: "ALT-004",
-    severity: "WARNING",
-    status: "UNDER REVIEW",
-    vesselName: "PACIFIC DAWN",
-    description: "Unusual course deviation logged",
-    location: "North Sea",
-    timestamp: new Date("2025-03-31T16:40:00"),
-    confidence: 81,
-  },
-  {
-    id: "ALT-005",
-    severity: "INFO",
-    status: "RESOLVED",
-    vesselName: "MERIDIAN",
-    description: "Port arrival delay reported by harbour master",
-    location: "Port of Rotterdam",
-    timestamp: new Date("2025-03-31T15:10:00"),
-    confidence: 99,
-  },
-];
+    vesselName: vessel.name,
+    description: `AIS signal lost for ${Math.floor(hoursOffline)}h. MMSI: ${vessel.mmsi}`,
+    location: `${vessel.lat.toFixed(2)}°N, ${vessel.lon.toFixed(2)}°E`,
+    timestamp: new Date(vessel.last_ais),
+    confidence: hoursOffline >= 24 ? 92 : 78,
+  };
+}
 
 export function InteractiveMap() {
-  const { cards, isLoading, error } = useDashboardCards();
+  const { cards, isLoading: cardsLoading, error: cardsError } = useDashboardCards();
+  const { vessels, darkVessels, isLoading: vesselsLoading, error: vesselsError } = useVessels();
+
+  const darkMmsiSet = new Set(darkVessels.map((v) => v.mmsi));
+  const alerts = darkVessels.map(darkVesselToAlert);
+  const isLoading = cardsLoading || vesselsLoading;
+  const error = cardsError ?? vesselsError;
 
   if (!MAPBOX_TOKEN) {
     return (
@@ -109,7 +76,7 @@ export function InteractiveMap() {
         {/* Error banner */}
         {error && (
           <p className="text-xs text-status-alert">
-            Failed to load dashboard data — showing last known values.
+            Failed to load data — check that the backend is running on port 8080.
           </p>
         )}
 
@@ -119,9 +86,9 @@ export function InteractiveMap() {
           <div className="min-w-0 flex-1 overflow-hidden rounded-2xl border border-border-subtle bg-bg-panel shadow-panel">
             <Map
               initialViewState={{
-                latitude: 36.5,
-                longitude: -121,
-                zoom: 4,
+                latitude: 55,
+                longitude: 10,
+                zoom: 3,
               }}
               mapStyle="mapbox://styles/mapbox/dark-v11"
               mapboxAccessToken={MAPBOX_TOKEN}
@@ -131,14 +98,36 @@ export function InteractiveMap() {
             >
               <NavigationControl position="top-right" />
               <ScaleControl position="bottom-left" />
-              {sampleVessels.map((vessel) => (
+
+              {/* Normal vessels — blue dot */}
+              {vessels
+                .filter((v) => !darkMmsiSet.has(v.mmsi))
+                .map((vessel) => (
+                  <Marker
+                    key={vessel.mmsi}
+                    latitude={vessel.lat}
+                    longitude={vessel.lon}
+                    anchor="center"
+                  >
+                    <span
+                      className="block size-3 rounded-full border border-bg-ocean bg-status-info"
+                      title={vessel.name}
+                    />
+                  </Marker>
+                ))}
+
+              {/* Dark vessels — red dot */}
+              {darkVessels.map((vessel) => (
                 <Marker
-                  key={vessel.id}
-                  latitude={vessel.latitude}
-                  longitude={vessel.longitude}
+                  key={vessel.mmsi}
+                  latitude={vessel.lat}
+                  longitude={vessel.lon}
                   anchor="center"
                 >
-                  <span className="block size-3 rounded-full border border-bg-ocean bg-status-alert" />
+                  <span
+                    className="block size-3 rounded-full border border-bg-ocean bg-status-alert"
+                    title={`DARK: ${vessel.name}`}
+                  />
                 </Marker>
               ))}
             </Map>
@@ -146,7 +135,7 @@ export function InteractiveMap() {
 
           {/* Recent Alerts panel */}
           <RecentAlerts
-            alerts={sampleAlerts}
+            alerts={alerts}
             className="w-80 shrink-0 overflow-hidden xl:w-96"
           />
         </div>
