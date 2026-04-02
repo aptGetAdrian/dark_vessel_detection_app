@@ -34,6 +34,22 @@ func Logger(log *zap.Logger) func(http.Handler) http.Handler {
 	}
 }
 
+// CORS returns a middleware that sets permissive CORS headers for local development.
+func CORS(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
 // Recoverer returns a chi-compatible middleware that catches panics,
 // logs them with a stack trace, and responds with 500.
 func Recoverer(log *zap.Logger) func(http.Handler) http.Handler {

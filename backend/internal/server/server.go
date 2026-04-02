@@ -26,6 +26,7 @@ func New(cfg *config.Config, log *zap.Logger) *Server {
 	// ── Global middleware ───────────────────────────────────────────────────
 	r.Use(chimiddleware.RequestID)
 	r.Use(chimiddleware.RealIP)
+	r.Use(middleware.CORS)
 	r.Use(middleware.Recoverer(log))
 	r.Use(middleware.Logger(log))
 	r.Use(chimiddleware.Heartbeat("/ping"))
