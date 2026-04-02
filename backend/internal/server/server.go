@@ -49,8 +49,9 @@ func v1Router(log *zap.Logger) chi.Router {
 	healthHandler := handler.NewHealthHandler(log)
 	r.Get("/health", healthHandler.Health)
 
-	// Register additional resource routers here, e.g.:
-	// r.Mount("/users", userRouter(log))
+	vesselHandler := handler.NewVesselHandler(log)
+	r.Get("/vessels", vesselHandler.GetAll)
+	r.Get("/vessels/dark", vesselHandler.GetDark)
 
 	return r
 }
