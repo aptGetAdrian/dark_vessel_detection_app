@@ -215,3 +215,19 @@ textarea {
     @apply font-sans;
     }
 }
+
+/* Mapbox popup resets — strip all default chrome */
+.vessel-popup .mapboxgl-popup-content {
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.vessel-popup .mapboxgl-popup-tip {
+  border-top-color: #2a3442; /* border-border-subtle */
+}
+
+.vessel-popup .mapboxgl-popup-close-button {
+  display: none;
+}

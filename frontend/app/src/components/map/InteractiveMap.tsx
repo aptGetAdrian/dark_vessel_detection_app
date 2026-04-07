@@ -1,3 +1,4 @@
+import { useState } from "react";
 import Map, {
   Marker,
   NavigationControl,
@@ -8,6 +9,7 @@ import { StatCard } from "@/components/ui/statCard";
 import { useDashboardCards } from "@/hooks/Usedashboardcards";
 import { useVessels } from "@/hooks/useVessels";
 import { RecentAlerts } from "@/components/ui/RecentAlerts";
+import { VesselPopup } from "@/components/map/VesselPopup";
 import type { VesselAlert, Vessel } from "@/types/dashboard";
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN as
@@ -34,8 +36,19 @@ function darkVesselToAlert(vessel: Vessel, index: number): VesselAlert {
 }
 
 export function InteractiveMap() {
-  const { cards, isLoading: cardsLoading, error: cardsError } = useDashboardCards();
-  const { vessels, darkVessels, isLoading: vesselsLoading, error: vesselsError } = useVessels();
+  const [selectedVessel, setSelectedVessel] = useState<Vessel | null>(null);
+
+  const {
+    cards,
+    isLoading: cardsLoading,
+    error: cardsError,
+  } = useDashboardCards();
+  const {
+    vessels,
+    darkVessels,
+    isLoading: vesselsLoading,
+    error: vesselsError,
+  } = useVessels();
 
   const darkMmsiSet = new Set(darkVessels.map((v) => v.mmsi));
   const alerts = darkVessels.map(darkVesselToAlert);
@@ -67,7 +80,7 @@ export function InteractiveMap() {
             ? Array.from({ length: 4 }).map((_, i) => (
                 <div
                   key={i}
-                  className="h-[88px] animate-pulse rounded-xl border border-border-subtle bg-bg-panel shadow-panel"
+                  className="h-88px animate-pulse rounded-xl border border-border-subtle bg-bg-panel shadow-panel"
                 />
               ))
             : cards.map((card) => <StatCard key={card.id} card={card} />)}
@@ -76,7 +89,8 @@ export function InteractiveMap() {
         {/* Error banner */}
         {error && (
           <p className="text-xs text-status-alert">
-            Failed to load data — check that the backend is running on port 8080.
+            Failed to load data — check that the backend is running on port
+            8080.
           </p>
         )}
 
@@ -95,6 +109,7 @@ export function InteractiveMap() {
               attributionControl={false}
               reuseMaps
               style={{ width: "100%", height: "100%" }}
+              onClick={() => setSelectedVessel(null)}
             >
               <NavigationControl position="top-right" />
               <ScaleControl position="bottom-left" />
@@ -108,9 +123,13 @@ export function InteractiveMap() {
                     latitude={vessel.lat}
                     longitude={vessel.lon}
                     anchor="center"
+                    onClick={(e) => {
+                      e.originalEvent.stopPropagation();
+                      setSelectedVessel(vessel);
+                    }}
                   >
                     <span
-                      className="block size-3 rounded-full border border-bg-ocean bg-status-info"
+                      className="block size-3 cursor-pointer rounded-full border border-bg-ocean bg-status-info transition-transform hover:scale-150"
                       title={vessel.name}
                     />
                   </Marker>
@@ -123,13 +142,26 @@ export function InteractiveMap() {
                   latitude={vessel.lat}
                   longitude={vessel.lon}
                   anchor="center"
+                  onClick={(e) => {
+                    e.originalEvent.stopPropagation();
+                    setSelectedVessel(vessel);
+                  }}
                 >
                   <span
-                    className="block size-3 rounded-full border border-bg-ocean bg-status-alert"
+                    className="block size-3 cursor-pointer rounded-full border border-bg-ocean bg-status-alert transition-transform hover:scale-150"
                     title={`DARK: ${vessel.name}`}
                   />
                 </Marker>
               ))}
+
+              {/* Vessel detail popup */}
+              {selectedVessel && (
+                <VesselPopup
+                  vessel={selectedVessel}
+                  isDark={darkMmsiSet.has(selectedVessel.mmsi)}
+                  onClose={() => setSelectedVessel(null)}
+                />
+              )}
             </Map>
           </div>
 
