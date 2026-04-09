@@ -6,6 +6,17 @@ export interface Vessel {
   lat: number;
   lon: number;
   last_ais: string; // ISO timestamp from backend
+  imo: number;
+  callsign: string;
+  type: number;
+  type_name: string;
+  sog: number;       // Speed Over Ground (knots)
+  cog: number;       // Course Over Ground (degrees)
+  heading: number;   // True heading, 511 = not available
+  navstat: number;   // Navigational status 0–15
+  navstat_name: string;
+  dest: string;
+  draught: number;   // metres
 }
 
 export interface DashboardCard {

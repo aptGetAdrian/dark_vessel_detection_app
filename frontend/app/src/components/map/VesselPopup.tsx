@@ -6,6 +6,7 @@ interface VesselPopupProps {
   vessel: Vessel;
   isDark: boolean;
   onClose: () => void;
+  onViewMore: () => void;
 }
 
 function formatTimeAgo(isoTimestamp: string): string {
@@ -32,11 +33,10 @@ function formatCoord(lat: number, lon: number): string {
 }
 
 function formatMMSI(mmsi: string): string {
-  // Format as "123 456 789"
   return mmsi.replace(/(\d{3})(\d{3})(\d{3})/, "$1 $2 $3");
 }
 
-export function VesselPopup({ vessel, isDark, onClose }: VesselPopupProps) {
+export function VesselPopup({ vessel, isDark, onClose, onViewMore }: VesselPopupProps) {
   const accentColor = isDark ? "bg-status-alert" : "bg-status-info";
   const borderColor = isDark ? "border-l-status-alert" : "border-l-status-info";
 
@@ -51,9 +51,7 @@ export function VesselPopup({ vessel, isDark, onClose }: VesselPopupProps) {
       onClose={onClose}
       className="vessel-popup"
     >
-      <div
-        className={`w-64 rounded-xl border border-border-subtle border-l-2 ${borderColor} bg-bg-panel shadow-panel`}
-      >
+      <div className={`w-56 rounded-xl border border-border-subtle border-l-2 ${borderColor} bg-bg-panel shadow-panel`}>
         {/* Header */}
         <div className="flex items-center gap-2 px-3 py-2.5 border-b border-border-subtle">
           <span className={`size-2 shrink-0 rounded-full ${accentColor}`} />
@@ -77,21 +75,20 @@ export function VesselPopup({ vessel, isDark, onClose }: VesselPopupProps) {
               DARK VESSEL
             </span>
           ) : (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-[#0c2a4a] px-2.5 py-1 text-xs font-bold tracking-wide text-[#7aaace] border border-[#1a4a7a]">
-              <span className="size-1.5 rounded-full bg-[#7aaace]" />
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-[#0c2a4a] px-2.5 py-1 text-xs font-bold tracking-wide text-status-info border border-[#1a4a7a]">
+              <span className="size-1.5 rounded-full bg-status-info" />
               ACTIVE
             </span>
           )}
         </div>
 
-        {/* Data rows */}
+        {/* Key data */}
         <dl className="px-3 py-2 space-y-2">
           <div className="flex items-center justify-between gap-3">
             <dt className="text-xs text-text-muted shrink-0">MMSI</dt>
             <dd className="font-mono text-xs text-text-primary">{formatMMSI(vessel.mmsi)}</dd>
           </div>
-
-          <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center justify-between gap-3">
             <dt className="flex items-center gap-1 text-xs text-text-muted shrink-0">
               <Clock className="size-3" />
               Last AIS
@@ -100,8 +97,7 @@ export function VesselPopup({ vessel, isDark, onClose }: VesselPopupProps) {
               {formatTimeAgo(vessel.last_ais)}
             </dd>
           </div>
-
-          <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center justify-between gap-3">
             <dt className="flex items-center gap-1 text-xs text-text-muted shrink-0">
               <MapPin className="size-3" />
               Position
@@ -111,6 +107,16 @@ export function VesselPopup({ vessel, isDark, onClose }: VesselPopupProps) {
             </dd>
           </div>
         </dl>
+
+        {/* View more */}
+        <div className="px-3 pb-3">
+          <button
+            onClick={onViewMore}
+            className="w-full rounded-lg border border-border-subtle bg-bg-surface py-1.5 text-xs font-semibold text-text-muted transition-colors hover:border-accent hover:text-text-primary"
+          >
+            View more
+          </button>
+        </div>
       </div>
     </Popup>
   );

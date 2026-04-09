@@ -10,6 +10,7 @@ import { useDashboardCards } from "@/hooks/Usedashboardcards";
 import { useVessels } from "@/hooks/useVessels";
 import { RecentAlerts } from "@/components/ui/RecentAlerts";
 import { VesselPopup } from "@/components/map/VesselPopup";
+import { VesselModal } from "@/components/map/VesselModal";
 import type { VesselAlert, Vessel } from "@/types/dashboard";
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN as
@@ -37,6 +38,7 @@ function darkVesselToAlert(vessel: Vessel, index: number): VesselAlert {
 
 export function InteractiveMap() {
   const [selectedVessel, setSelectedVessel] = useState<Vessel | null>(null);
+  const [modalVessel, setModalVessel] = useState<Vessel | null>(null);
 
   const {
     cards,
@@ -160,6 +162,10 @@ export function InteractiveMap() {
                   vessel={selectedVessel}
                   isDark={darkMmsiSet.has(selectedVessel.mmsi)}
                   onClose={() => setSelectedVessel(null)}
+                  onViewMore={() => {
+                    setModalVessel(selectedVessel);
+                    setSelectedVessel(null);
+                  }}
                 />
               )}
             </Map>
@@ -172,6 +178,15 @@ export function InteractiveMap() {
           />
         </div>
       </div>
+
+      {/* Vessel detail modal */}
+      {modalVessel && (
+        <VesselModal
+          vessel={modalVessel}
+          isDark={darkMmsiSet.has(modalVessel.mmsi)}
+          onClose={() => setModalVessel(null)}
+        />
+      )}
     </section>
   );
 }
