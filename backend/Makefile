@@ -1,4 +1,4 @@
-.PHONY: run dev build tidy lint test clean
+.PHONY: run dev build tidy lint test clean seed
 
 ## run: build and run the binary directly
 run:
@@ -24,6 +24,10 @@ lint:
 ## test: run all tests with race detector
 test:
 	go test -race -cover ./...
+
+## seed: populate the database with demo vessel data (requires DATABASE_URL)
+seed:
+	go run ./cmd/seed
 
 ## clean: remove build artefacts
 clean:
