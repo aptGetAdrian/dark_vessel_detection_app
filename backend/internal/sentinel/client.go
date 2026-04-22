@@ -95,7 +95,6 @@ func (c *Client) FetchSARImage(ctx context.Context, area model.ScanArea) ([]byte
 				"processing": map[string]any{
 					"orthorectify":       true,
 					"backCoeff":          "GAMMA0_TERRAIN",
-					"speckleFilter":      map[string]any{"isEnabled": true, "windowSizeX": 5, "windowSizeY": 5},
 				},
 			}},
 		},
