@@ -231,3 +231,21 @@ textarea {
 .vessel-popup .mapboxgl-popup-close-button {
   display: none;
 }
+
+.satellite-popup .mapboxgl-popup-content {
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.satellite-popup .mapboxgl-popup-tip {
+  border-top-color: #2a3442;
+}
+
+.satellite-popup .mapboxgl-popup-close-button {
+  color: #b9c2c9;
+  font-size: 14px;
+  top: 4px;
+  right: 6px;
+}

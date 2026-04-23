@@ -42,3 +42,15 @@ export interface VesselAlert {
   timestamp: Date;
   confidence: number;
 }
+
+export interface SatelliteDetection {
+  id: number;
+  lat: number;
+  lon: number;
+  detected_at: string;
+  source: string;
+  scan_area: string;
+  matched_mmsi: number | null;
+  matched_name: string;
+  created_at: string;
+}

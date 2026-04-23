@@ -13,7 +13,7 @@ const (
 	// shipThreshold: grayscale pixel value above which a pixel is a ship candidate.
 	// With the evalscript mapping [-25dB,+5dB]→[0,255]:
 	//   -5 dB (typical ship) → ~170   ocean (-20 dB) → ~42
-	shipThreshold = uint8(170)
+	shipThreshold = uint8(155)
 
 	minClusterPixels = 2   // below = speckle noise
 	maxClusterPixels = 300 // above = coastline / land clutter
@@ -41,7 +41,47 @@ func ExtractDetections(pngBytes []byte, area model.ScanArea) ([]model.SatelliteD
 			Source: "sentinel-1",
 		})
 	}
-	return detections, nil
+	return filterLandClutter(detections), nil
+}
+
+// filterLandClutter removes detections that are too densely packed.
+// Ships at sea are isolated bright spots; land infrastructure (buildings, ports,
+// bridges) creates hundreds of detections clustered within a few km.
+// Any detection with more than maxNeighbors others within radiusKm is dropped.
+func filterLandClutter(dets []model.SatelliteDetection) []model.SatelliteDetection {
+	const (
+		radiusKm    = 4.0
+		maxNeighbors = 5
+	)
+	result := make([]model.SatelliteDetection, 0, len(dets))
+	for i := range dets {
+		neighbors := 0
+		for j := range dets {
+			if i == j {
+				continue
+			}
+			if haversineKm(dets[i].Lat, dets[i].Lon, dets[j].Lat, dets[j].Lon) < radiusKm {
+				neighbors++
+				if neighbors > maxNeighbors {
+					break
+				}
+			}
+		}
+		if neighbors <= maxNeighbors {
+			result = append(result, dets[i])
+		}
+	}
+	return result
+}
+
+func haversineKm(lat1, lon1, lat2, lon2 float64) float64 {
+	const R = 6371.0
+	φ1 := lat1 * math.Pi / 180
+	φ2 := lat2 * math.Pi / 180
+	Δφ := (lat2 - lat1) * math.Pi / 180
+	Δλ := (lon2 - lon1) * math.Pi / 180
+	a := math.Sin(Δφ/2)*math.Sin(Δφ/2) + math.Cos(φ1)*math.Cos(φ2)*math.Sin(Δλ/2)*math.Sin(Δλ/2)
+	return R * 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
 }
 
 // toGray converts any image to *image.Gray.

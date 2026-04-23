@@ -131,6 +131,10 @@ func (p *Poller) pollSatellite(ctx context.Context) {
 
 	if p.sentinelClient != nil {
 		detections = p.scanSentinel(ctx)
+		if len(detections) == 0 {
+			p.log.Warn("Sentinel scan returned 0 detections, using simulated fallback")
+			detections = p.simulateDetections(vessels)
+		}
 	} else {
 		detections = p.simulateDetections(vessels)
 	}
@@ -180,6 +184,9 @@ func (p *Poller) scanSentinel(ctx context.Context) []model.SatelliteDetection {
 		if err != nil {
 			p.log.Error("extract detections", zap.String("area", area.Name), zap.Error(err))
 			continue
+		}
+		for i := range dets {
+			dets[i].ScanArea = area.Name
 		}
 		p.log.Info("SAR detections", zap.String("area", area.Name), zap.Int("count", len(dets)))
 		all = append(all, dets...)

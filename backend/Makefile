@@ -2,7 +2,7 @@
 
 ## run: build and run the binary directly
 run:
-	go run ./cmd/api
+	set -a && . ./.env && set +a && go run ./cmd/api
 
 ## dev: hot-reload via air
 dev:
@@ -27,7 +27,7 @@ test:
 
 ## seed: populate the database with demo vessel data (requires DATABASE_URL)
 seed:
-	go run ./cmd/seed
+	set -a && . ./.env && set +a && go run ./cmd/seed
 
 ## clean: remove build artefacts
 clean:

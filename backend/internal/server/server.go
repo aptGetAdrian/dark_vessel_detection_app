@@ -55,6 +55,7 @@ func v1Router(log *zap.Logger, st *store.Store) chi.Router {
 
 	sat := handler.NewSatelliteHandler(log, st)
 	r.Get("/satellite/detections", sat.GetDetections)
+	r.Get("/satellite/areas", sat.GetScanAreas)
 
 	return r
 }

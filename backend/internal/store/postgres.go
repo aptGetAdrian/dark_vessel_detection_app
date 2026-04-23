@@ -64,10 +64,13 @@ CREATE TABLE IF NOT EXISTS satellite_detections (
     lon          DOUBLE PRECISION NOT NULL,
     detected_at  TIMESTAMPTZ NOT NULL,
     source       TEXT NOT NULL DEFAULT 'sentinel-1',
+    scan_area    TEXT NOT NULL DEFAULT '',
     matched_mmsi BIGINT,
     matched_name TEXT NOT NULL DEFAULT '',
     created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+-- Add scan_area column to existing tables (safe to run multiple times)
+ALTER TABLE satellite_detections ADD COLUMN IF NOT EXISTS scan_area TEXT NOT NULL DEFAULT '';
 CREATE INDEX IF NOT EXISTS idx_sat_detected_at ON satellite_detections (detected_at DESC);
 `
 
@@ -322,21 +325,34 @@ func vesselTypeName(t int) string {
 
 func (s *Store) InsertSatelliteDetection(ctx context.Context, d model.SatelliteDetection) error {
 	_, err := s.pool.Exec(ctx, `
-		INSERT INTO satellite_detections (lat, lon, detected_at, source, matched_mmsi, matched_name)
-		VALUES ($1, $2, $3, $4, $5, $6)
-	`, d.Lat, d.Lon, d.DetectedAt, d.Source, d.MatchedMMSI, d.MatchedName)
+		INSERT INTO satellite_detections (lat, lon, detected_at, source, scan_area, matched_mmsi, matched_name)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+	`, d.Lat, d.Lon, d.DetectedAt, d.Source, d.ScanArea, d.MatchedMMSI, d.MatchedName)
 	return err
 }
 
-// GetSatelliteDetections returns detections from the last N hours.
-func (s *Store) GetSatelliteDetections(ctx context.Context, hours int) ([]model.SatelliteDetection, error) {
-	rows, err := s.pool.Query(ctx, `
-		SELECT id, lat, lon, detected_at, source, matched_mmsi, matched_name, created_at
-		FROM satellite_detections
-		WHERE detected_at > NOW() - ($1 || ' hours')::interval
-		ORDER BY detected_at DESC
-		LIMIT 1000
-	`, hours)
+// GetSatelliteDetections returns detections from the last N hours, optionally filtered by scan area.
+func (s *Store) GetSatelliteDetections(ctx context.Context, hours int, area string) ([]model.SatelliteDetection, error) {
+	var rows pgx.Rows
+	var err error
+	if area != "" {
+		rows, err = s.pool.Query(ctx, `
+			SELECT id, lat, lon, detected_at, source, scan_area, matched_mmsi, matched_name, created_at
+			FROM satellite_detections
+			WHERE detected_at > NOW() - ($1 * interval '1 hour')
+			  AND scan_area = $2
+			ORDER BY detected_at DESC
+			LIMIT 2000
+		`, hours, area)
+	} else {
+		rows, err = s.pool.Query(ctx, `
+			SELECT id, lat, lon, detected_at, source, scan_area, matched_mmsi, matched_name, created_at
+			FROM satellite_detections
+			WHERE detected_at > NOW() - ($1 * interval '1 hour')
+			ORDER BY detected_at DESC
+			LIMIT 2000
+		`, hours)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -347,10 +363,10 @@ func (s *Store) GetSatelliteDetections(ctx context.Context, hours int) ([]model.
 // GetUnmatchedDetections returns satellite detections with no AIS match from the last N hours.
 func (s *Store) GetUnmatchedDetections(ctx context.Context, hours int) ([]model.SatelliteDetection, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, lat, lon, detected_at, source, matched_mmsi, matched_name, created_at
+		SELECT id, lat, lon, detected_at, source, scan_area, matched_mmsi, matched_name, created_at
 		FROM satellite_detections
 		WHERE matched_mmsi IS NULL
-		  AND detected_at > NOW() - ($1 || ' hours')::interval
+		  AND detected_at > NOW() - ($1 * interval '1 hour')
 		ORDER BY detected_at DESC
 		LIMIT 500
 	`, hours)
@@ -372,7 +388,7 @@ func scanSatDetections(rows pgx.Rows) ([]model.SatelliteDetection, error) {
 	for rows.Next() {
 		var d model.SatelliteDetection
 		if err := rows.Scan(&d.ID, &d.Lat, &d.Lon, &d.DetectedAt, &d.Source,
-			&d.MatchedMMSI, &d.MatchedName, &d.CreatedAt); err != nil {
+			&d.ScanArea, &d.MatchedMMSI, &d.MatchedName, &d.CreatedAt); err != nil {
 			return nil, err
 		}
 		dets = append(dets, d)
