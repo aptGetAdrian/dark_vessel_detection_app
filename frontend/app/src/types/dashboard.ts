@@ -17,6 +17,13 @@ export interface Vessel {
   navstat_name: string;
   dest: string;
   draught: number;   // metres
+  prev_lat?: number;
+  prev_lon?: number;
+  prev_timestamp?: string;
+  confidence?: number;    // 0-100, backend-calculated (lower = more suspicious)
+  risk_score?: number;    // 0-100, backend-calculated (higher = more dangerous)
+  anomaly_flags?: string[]; // e.g. ["IMPOSSIBLE_TRAVEL", "NAVSTAT_MISMATCH"]
+  is_dark?: boolean;
 }
 
 export interface DashboardCard {

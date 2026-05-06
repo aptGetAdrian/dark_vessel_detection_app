@@ -58,6 +58,8 @@ func (h *VesselHandler) GetDark(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, http.StatusOK, vessels)
 }
 
+func timePtr(t time.Time) *time.Time { return &t }
+
 func mockVessels() []model.Vessel {
 	now := time.Now().UTC()
 	return []model.Vessel{
@@ -67,6 +69,7 @@ func mockVessels() []model.Vessel {
 			Lat: 55.6761, Lon: 12.5683, LastAIS: now.Add(-1 * time.Hour),
 			SOG: 12.4, COG: 185.0, Heading: 183, NavStat: 0, NavStatName: "Underway",
 			Dest: "DEHAM", Draught: 7.2,
+			PrevLat: 56.15, PrevLon: 12.58, PrevTimestamp: timePtr(now.Add(-4 * time.Hour)),
 		},
 		{
 			MMSI: 234567890, Name: "Baltic Queen", CallSign: "SEBC9",
@@ -74,6 +77,7 @@ func mockVessels() []model.Vessel {
 			Lat: 57.7089, Lon: 11.9746, LastAIS: now.Add(-30 * time.Minute),
 			SOG: 9.1, COG: 310.0, Heading: 308, NavStat: 0, NavStatName: "Underway",
 			Dest: "SEGOT", Draught: 6.8,
+			PrevLat: 57.59, PrevLon: 12.15, PrevTimestamp: timePtr(now.Add(-2*time.Hour - 30*time.Minute)),
 		},
 		{
 			// Anomaly: moored but moving
@@ -82,6 +86,7 @@ func mockVessels() []model.Vessel {
 			Lat: 60.3913, Lon: 5.3221, LastAIS: now.Add(-8 * time.Hour),
 			SOG: 3.2, COG: 122.6, Heading: 119, NavStat: 5, NavStatName: "Moored",
 			Dest: "PA BLB", Draught: 8.0,
+			PrevLat: 60.28, PrevLon: 5.30, PrevTimestamp: timePtr(now.Add(-12 * time.Hour)),
 		},
 		{
 			// Anomaly: 24h silence, no identity
@@ -97,6 +102,7 @@ func mockVessels() []model.Vessel {
 			Lat: 63.4305, Lon: 10.3951, LastAIS: now.Add(-2 * time.Hour),
 			SOG: 6.3, COG: 45.0, Heading: 46, NavStat: 0, NavStatName: "Underway",
 			Dest: "NOBGO", Draught: 4.1,
+			PrevLat: 63.35, PrevLon: 10.24, PrevTimestamp: timePtr(now.Add(-4 * time.Hour)),
 		},
 		{
 			// Anomaly: 48h silence, no identity, tanker

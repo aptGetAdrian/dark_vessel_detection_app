@@ -1,39 +1,14 @@
 import { Popup } from "react-map-gl/mapbox";
 import { X, Clock, MapPin } from "lucide-react";
 import type { Vessel } from "@/types/dashboard";
+import { VesselStatusBadge } from "@/components/ui/VesselStatusBadge";
+import { formatTimeAgo, formatCoord, formatMMSI } from "@/lib/formatters";
 
 interface VesselPopupProps {
   vessel: Vessel;
   isDark: boolean;
   onClose: () => void;
   onViewMore: () => void;
-}
-
-function formatTimeAgo(isoTimestamp: string): string {
-  const diffMs = Date.now() - new Date(isoTimestamp).getTime();
-  const totalMinutes = Math.floor(diffMs / 60_000);
-
-  if (totalMinutes < 1) return "just now";
-  if (totalMinutes < 60) return `${totalMinutes}m ago`;
-
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-
-  if (hours < 24) return minutes > 0 ? `${hours}h ${minutes}m ago` : `${hours}h ago`;
-
-  const days = Math.floor(hours / 24);
-  const remHours = hours % 24;
-  return remHours > 0 ? `${days}d ${remHours}h ago` : `${days}d ago`;
-}
-
-function formatCoord(lat: number, lon: number): string {
-  const latDir = lat >= 0 ? "N" : "S";
-  const lonDir = lon >= 0 ? "E" : "W";
-  return `${Math.abs(lat).toFixed(4)}°${latDir} · ${Math.abs(lon).toFixed(4)}°${lonDir}`;
-}
-
-function formatMMSI(mmsi: string): string {
-  return mmsi.replace(/(\d{3})(\d{3})(\d{3})/, "$1 $2 $3");
 }
 
 export function VesselPopup({ vessel, isDark, onClose, onViewMore }: VesselPopupProps) {
@@ -69,17 +44,7 @@ export function VesselPopup({ vessel, isDark, onClose, onViewMore }: VesselPopup
 
         {/* Status badge */}
         <div className="px-3 pt-2.5 pb-1">
-          {isDark ? (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-[#5c1a1a] px-2.5 py-1 text-xs font-bold tracking-wide text-[#f87171] border border-[#7f2b2b]">
-              <span className="size-1.5 rounded-full bg-[#f87171]" />
-              DARK VESSEL
-            </span>
-          ) : (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-[#0c2a4a] px-2.5 py-1 text-xs font-bold tracking-wide text-status-info border border-[#1a4a7a]">
-              <span className="size-1.5 rounded-full bg-status-info" />
-              ACTIVE
-            </span>
-          )}
+          <VesselStatusBadge isDark={isDark} label={isDark ? "DARK VESSEL" : undefined} />
         </div>
 
         {/* Key data */}

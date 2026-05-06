@@ -1,15 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { AlertTriangle, Activity, Map as MapIcon, Ship } from "lucide-react";
 import type { DashboardCard, Vessel } from "@/types/dashboard";
-
-const API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "http://localhost:8080";
-const POLL_INTERVAL_MS = 30_000;
-
-async function fetchJSON<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`);
-  if (!res.ok) throw new Error(`${path} returned ${res.status}`);
-  return res.json() as Promise<T>;
-}
+import { fetchJSON } from "@/lib/api";
+import { POLL_INTERVAL_MS, COVERAGE_AREA } from "@/lib/constants";
 
 function buildCards(
   darkCount: number,
@@ -38,7 +31,7 @@ function buildCards(
     {
       id: "coverage",
       title: "Coverage Area",
-      value: "2840K km²",
+      value: COVERAGE_AREA,
       icon: MapIcon,
       iconClass: "text-status-info",
       iconBgClass: "bg-status-info/14",
@@ -74,7 +67,6 @@ export function useDashboardCards(): UseDashboardCardsResult {
         fetchJSON<Vessel[]>("/api/v1/vessels"),
         fetchJSON<Vessel[]>("/api/v1/vessels/dark"),
       ]);
-
       setCards(buildCards(darkVessels.length, allVessels.length, new Date()));
       setError(null);
     } catch (err) {

@@ -1,14 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import type { Vessel } from "@/types/dashboard";
-
-const API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "http://localhost:8080";
-const POLL_INTERVAL_MS = 30_000;
-
-async function fetchJSON<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`);
-  if (!res.ok) throw new Error(`${path} returned ${res.status}`);
-  return res.json() as Promise<T>;
-}
+import { fetchJSON } from "@/lib/api";
+import { POLL_INTERVAL_MS } from "@/lib/constants";
 
 interface UseVesselsResult {
   vessels: Vessel[];

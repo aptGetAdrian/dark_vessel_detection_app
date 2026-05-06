@@ -8,7 +8,7 @@ export function Header() {
           href="#"
           className="text-base font-semibold tracking-tight text-text-primary"
         >
-          Dark Vessel
+          Heimdal
         </a>
 
         <nav

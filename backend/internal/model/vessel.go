@@ -18,8 +18,11 @@ type Vessel struct {
 	Type        int       `json:"type"`
 	TypeName    string    `json:"type_name"`
 	Draught     float64   `json:"draught"`
-	LastAIS     time.Time `json:"last_ais"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	LastAIS       time.Time  `json:"last_ais"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+	PrevLat       float64    `json:"prev_lat,omitempty"`
+	PrevLon       float64    `json:"prev_lon,omitempty"`
+	PrevTimestamp *time.Time `json:"prev_timestamp,omitempty"`
 }
 
 func (v *Vessel) IsDark() bool {

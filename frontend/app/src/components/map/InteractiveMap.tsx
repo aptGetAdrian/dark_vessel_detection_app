@@ -7,14 +7,23 @@ import Map, {
 } from "react-map-gl/mapbox";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { Satellite } from "lucide-react";
-import { StatCard } from "@/components/ui/statCard";
-import { useDashboardCards } from "@/hooks/Usedashboardcards";
+import { StatCard } from "@/components/ui/StatCard";
+import { useDashboardCards } from "@/hooks/useDashboardCards";
 import { useVessels } from "@/hooks/useVessels";
 import { useSatelliteDetections } from "@/hooks/useSatelliteDetections";
 import { RecentAlerts } from "@/components/ui/RecentAlerts";
 import { VesselPopup } from "@/components/map/VesselPopup";
 import { VesselModal } from "@/components/map/VesselModal";
-import type { VesselAlert, Vessel, SatelliteDetection } from "@/types/dashboard";
+import type {
+  VesselAlert,
+  Vessel,
+  SatelliteDetection,
+} from "@/types/dashboard";
+import {
+  DEFAULT_MAP_CENTER,
+  MAPBOX_DARK_STYLE,
+  RISK_CRITICAL_THRESHOLD,
+} from "@/lib/constants";
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN as
   | string
@@ -25,17 +34,23 @@ function darkVesselToAlert(vessel: Vessel, index: number): VesselAlert {
     (Date.now() - new Date(vessel.last_ais).getTime()) / 3_600_000;
 
   const severity: VesselAlert["severity"] =
-    hoursOffline >= 24 ? "CRITICAL" : "WARNING";
+    (vessel.risk_score ?? 0) >= RISK_CRITICAL_THRESHOLD
+      ? "CRITICAL"
+      : "WARNING";
+
+  const flagSummary = vessel.anomaly_flags?.length
+    ? ` Flags: ${vessel.anomaly_flags.join(", ")}.`
+    : "";
 
   return {
     id: `ALT-${String(index + 1).padStart(3, "0")}`,
     severity,
     status: "NEW",
     vesselName: vessel.name,
-    description: `AIS signal lost for ${Math.floor(hoursOffline)}h. MMSI: ${vessel.mmsi}`,
+    description: `AIS signal lost for ${Math.floor(hoursOffline)}h. MMSI: ${vessel.mmsi}.${flagSummary}`,
     location: `${vessel.lat.toFixed(2)}°N, ${vessel.lon.toFixed(2)}°E`,
     timestamp: new Date(vessel.last_ais),
-    confidence: hoursOffline >= 24 ? 92 : 78,
+    confidence: vessel.confidence ?? 0,
   };
 }
 
@@ -49,7 +64,8 @@ function formatDetectedAt(iso: string): string {
 export function InteractiveMap() {
   const [selectedVessel, setSelectedVessel] = useState<Vessel | null>(null);
   const [modalVessel, setModalVessel] = useState<Vessel | null>(null);
-  const [selectedDetection, setSelectedDetection] = useState<SatelliteDetection | null>(null);
+  const [selectedDetection, setSelectedDetection] =
+    useState<SatelliteDetection | null>(null);
   const [showSatellite, setShowSatellite] = useState(false);
   const [selectedArea, setSelectedArea] = useState("");
 
@@ -115,12 +131,8 @@ export function InteractiveMap() {
           {/* Map */}
           <div className="relative min-w-0 flex-1 overflow-hidden rounded-2xl border border-border-subtle bg-bg-panel shadow-panel">
             <Map
-              initialViewState={{
-                latitude: 55,
-                longitude: 10,
-                zoom: 3,
-              }}
-              mapStyle="mapbox://styles/mapbox/dark-v11"
+              initialViewState={DEFAULT_MAP_CENTER}
+              mapStyle={MAPBOX_DARK_STYLE}
               mapboxAccessToken={MAPBOX_TOKEN}
               attributionControl={false}
               reuseMaps
@@ -192,9 +204,10 @@ export function InteractiveMap() {
                     <span
                       className="block size-3 cursor-pointer rotate-45 border border-bg-ocean transition-transform hover:scale-150"
                       style={{
-                        backgroundColor: det.matched_mmsi == null
-                          ? "#d4a24c"  // amber — unmatched (dark vessel candidate)
-                          : "#4a5568", // gray — AIS-confirmed, no concern
+                        backgroundColor:
+                          det.matched_mmsi == null
+                            ? "#d4a24c" // amber — unmatched (dark vessel candidate)
+                            : "#4a5568", // gray — AIS-confirmed, no concern
                       }}
                       title={
                         det.matched_mmsi == null
@@ -205,7 +218,37 @@ export function InteractiveMap() {
                   </Marker>
                 ))}
 
-              {/* Vessel detail popup */}
+              {/* Satellite detections — diamond markers */}
+              {showSatellite &&
+                detections.map((det) => (
+                  <Marker
+                    key={det.id}
+                    latitude={det.lat}
+                    longitude={det.lon}
+                    anchor="center"
+                    onClick={(e) => {
+                      e.originalEvent.stopPropagation();
+                      setSelectedVessel(null);
+                      setSelectedDetection(det);
+                    }}
+                  >
+                    <span
+                      className="block size-3 cursor-pointer rotate-45 border border-bg-ocean transition-transform hover:scale-150"
+                      style={{
+                        backgroundColor:
+                          det.matched_mmsi == null
+                            ? "#d4a24c" // amber — unmatched (dark vessel candidate)
+                            : "#4a5568", // gray — AIS-confirmed, no concern
+                      }}
+                      title={
+                        det.matched_mmsi == null
+                          ? "SAR: unmatched (dark vessel candidate)"
+                          : `SAR: matched to ${det.matched_name}`
+                      }
+                    />
+                  </Marker>
+                ))}
+
               {selectedVessel && (
                 <VesselPopup
                   vessel={selectedVessel}
@@ -230,7 +273,10 @@ export function InteractiveMap() {
                 >
                   <div className="min-w-[180px] rounded-lg bg-bg-panel p-3 text-xs">
                     <div className="mb-2 flex items-center gap-2">
-                      <Satellite size={13} className="shrink-0 text-status-warning" />
+                      <Satellite
+                        size={13}
+                        className="shrink-0 text-status-warning"
+                      />
                       <span className="font-semibold uppercase tracking-wide text-text-primary">
                         SAR Detection
                       </span>
@@ -240,33 +286,44 @@ export function InteractiveMap() {
                       <div className="flex justify-between gap-4">
                         <span>Status</span>
                         {selectedDetection.matched_mmsi == null ? (
-                          <span className="font-medium text-status-warning">Unmatched</span>
+                          <span className="font-medium text-status-warning">
+                            Unmatched
+                          </span>
                         ) : (
-                          <span className="font-medium text-status-info">Matched</span>
+                          <span className="font-medium text-status-info">
+                            Matched
+                          </span>
                         )}
                       </div>
 
                       {selectedDetection.matched_name && (
                         <div className="flex justify-between gap-4">
                           <span>Vessel</span>
-                          <span className="font-medium text-text-primary">{selectedDetection.matched_name}</span>
+                          <span className="font-medium text-text-primary">
+                            {selectedDetection.matched_name}
+                          </span>
                         </div>
                       )}
 
                       <div className="flex justify-between gap-4">
                         <span>Detected</span>
-                        <span className="font-medium text-text-primary">{formatDetectedAt(selectedDetection.detected_at)}</span>
+                        <span className="font-medium text-text-primary">
+                          {formatDetectedAt(selectedDetection.detected_at)}
+                        </span>
                       </div>
 
                       <div className="flex justify-between gap-4">
                         <span>Source</span>
-                        <span className="font-medium text-text-primary">{selectedDetection.source}</span>
+                        <span className="font-medium text-text-primary">
+                          {selectedDetection.source}
+                        </span>
                       </div>
 
                       <div className="flex justify-between gap-4">
                         <span>Position</span>
                         <span className="font-medium text-text-primary">
-                          {selectedDetection.lat.toFixed(3)}°N · {selectedDetection.lon.toFixed(3)}°E
+                          {selectedDetection.lat.toFixed(3)}°N ·{" "}
+                          {selectedDetection.lon.toFixed(3)}°E
                         </span>
                       </div>
                     </div>
@@ -290,7 +347,9 @@ export function InteractiveMap() {
                 >
                   <option value="">All areas</option>
                   {scanAreas.map((a) => (
-                    <option key={a} value={a}>{a}</option>
+                    <option key={a} value={a}>
+                      {a}
+                    </option>
                   ))}
                 </select>
               )}
@@ -321,7 +380,6 @@ export function InteractiveMap() {
             </div>
           </div>
 
-          {/* Recent Alerts panel */}
           <RecentAlerts
             alerts={alerts}
             className="w-80 shrink-0 overflow-hidden xl:w-96"
@@ -329,7 +387,6 @@ export function InteractiveMap() {
         </div>
       </div>
 
-      {/* Vessel detail modal */}
       {modalVessel && (
         <VesselModal
           vessel={modalVessel}
