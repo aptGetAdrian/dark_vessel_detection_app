@@ -25,6 +25,14 @@
     --color-accent-soft: rgba(156, 213, 255, 0.2);
     --color-accent-strong: #355872;
 
+    --color-severity-critical-bg: #3b1419;
+    --color-severity-critical-border: #5c2026;
+    --color-severity-warning-bg: #3b2e10;
+    --color-severity-warning-border: #5c4a1a;
+    --color-severity-info-bg: #12283e;
+    --color-severity-info-border: #1e3a5c;
+    --color-status-new: #5cb8c8;
+
     --font-sans:
         "Inter", "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system,
         "Segoe UI", Roboto, sans-serif;
@@ -225,7 +233,7 @@ textarea {
 }
 
 .vessel-popup .mapboxgl-popup-tip {
-  border-top-color: #2a3442; /* border-border-subtle */
+  border-top-color: var(--color-border-subtle);
 }
 
 .vessel-popup .mapboxgl-popup-close-button {
@@ -240,12 +248,22 @@ textarea {
 }
 
 .satellite-popup .mapboxgl-popup-tip {
-  border-top-color: #2a3442;
+  border-top-color: var(--color-border-subtle);
 }
 
 .satellite-popup .mapboxgl-popup-close-button {
-  color: #b9c2c9;
+  color: var(--color-text-muted);
   font-size: 14px;
   top: 4px;
   right: 6px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

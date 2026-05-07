@@ -1,8 +1,11 @@
 # macOS
 .DS_Store
 
-# Claude Code
 CLAUDE.md
 .claude/
+.agents/
+skills-lock.json
+.planning/
+PRODUCT.md
 
 api.txt

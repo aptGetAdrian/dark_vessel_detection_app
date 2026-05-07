@@ -48,6 +48,7 @@ func v1Router(log *zap.Logger, st *store.Store) chi.Router {
 	vessels := handler.NewVesselHandler(log, st)
 	r.Get("/vessels", vessels.GetAll)
 	r.Get("/vessels/dark", vessels.GetDark)
+	r.Get("/vessels/{mmsi}/track", vessels.GetTrack)
 
 	alerts := handler.NewAlertHandler(log, st)
 	r.Get("/alerts", alerts.GetAlerts)

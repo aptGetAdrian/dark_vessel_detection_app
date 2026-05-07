@@ -13,7 +13,6 @@ interface VesselPopupProps {
 
 export function VesselPopup({ vessel, isDark, onClose, onViewMore }: VesselPopupProps) {
   const accentColor = isDark ? "bg-status-alert" : "bg-status-info";
-  const borderColor = isDark ? "border-l-status-alert" : "border-l-status-info";
 
   return (
     <Popup
@@ -26,11 +25,10 @@ export function VesselPopup({ vessel, isDark, onClose, onViewMore }: VesselPopup
       onClose={onClose}
       className="vessel-popup"
     >
-      <div className={`w-56 rounded-xl border border-border-subtle border-l-2 ${borderColor} bg-bg-panel shadow-panel`}>
-        {/* Header */}
+      <div className="w-56 rounded-xl border border-border-subtle bg-bg-panel shadow-panel">
         <div className="flex items-center gap-2 px-3 py-2.5 border-b border-border-subtle">
           <span className={`size-2 shrink-0 rounded-full ${accentColor}`} />
-          <span className="flex-1 truncate text-sm font-bold tracking-widest text-text-primary uppercase">
+          <span className="flex-1 truncate text-sm font-semibold tracking-wide text-text-primary uppercase">
             {vessel.name}
           </span>
           <button
@@ -58,7 +56,7 @@ export function VesselPopup({ vessel, isDark, onClose, onViewMore }: VesselPopup
               <Clock className="size-3" />
               Last AIS
             </dt>
-            <dd className={`font-mono text-xs ${isDark ? "text-[#f87171]" : "text-text-primary"}`}>
+            <dd className={`font-mono text-xs ${isDark ? "text-status-alert" : "text-text-primary"}`}>
               {formatTimeAgo(vessel.last_ais)}
             </dd>
           </div>

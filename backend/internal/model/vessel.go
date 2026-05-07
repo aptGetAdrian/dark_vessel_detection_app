@@ -23,6 +23,9 @@ type Vessel struct {
 	PrevLat       float64    `json:"prev_lat,omitempty"`
 	PrevLon       float64    `json:"prev_lon,omitempty"`
 	PrevTimestamp *time.Time `json:"prev_timestamp,omitempty"`
+	Confidence    int        `json:"confidence,omitempty"`
+	RiskScore     int        `json:"risk_score,omitempty"`
+	AnomalyFlags  []string   `json:"anomaly_flags,omitempty"`
 }
 
 func (v *Vessel) IsDark() bool {

@@ -1,7 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 
 export interface Vessel {
-  mmsi: string;
+  mmsi: number;
   name: string;
   lat: number;
   lon: number;
@@ -34,6 +34,8 @@ export interface DashboardCard {
   iconClass: string;
   iconBgClass: string;
   updatedAt: Date;
+  delta: number | null;
+  previousValue: number | null;
 }
 
 export type AlertSeverity = "CRITICAL" | "WARNING" | "INFO";
@@ -48,6 +50,13 @@ export interface VesselAlert {
   location: string;
   timestamp: Date;
   confidence: number;
+}
+
+export interface TrackPosition {
+  lat: number;
+  lon: number;
+  sog: number;
+  recorded_at: string;
 }
 
 export interface SatelliteDetection {

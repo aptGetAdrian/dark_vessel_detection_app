@@ -100,10 +100,12 @@ func runSchema(ctx context.Context, pool *pgxpool.Pool) error {
 		    lon          DOUBLE PRECISION NOT NULL,
 		    detected_at  TIMESTAMPTZ NOT NULL,
 		    source       TEXT NOT NULL DEFAULT 'simulated',
+		    scan_area    TEXT NOT NULL DEFAULT '',
 		    matched_mmsi BIGINT,
 		    matched_name TEXT NOT NULL DEFAULT '',
 		    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		);
+		ALTER TABLE satellite_detections ADD COLUMN IF NOT EXISTS scan_area TEXT NOT NULL DEFAULT '';
 		CREATE INDEX IF NOT EXISTS idx_sat_detected_at ON satellite_detections (detected_at DESC);
 	`)
 	return err
@@ -276,49 +278,52 @@ func seedSatelliteDetections(ctx context.Context, pool *pgxpool.Pool) error {
 
 	// Matched detections — satellite confirms an AIS vessel is where it says it is
 	matched := []struct {
-		lat, lon    float64
-		mmsi        int64
-		vesselName  string
+		lat, lon   float64
+		mmsi       int64
+		vesselName string
+		scanArea   string
 	}{
-		{55.677, 12.571, 211345670, "Nordic Pioneer"},
-		{60.393, 5.324, 257123450, "Fjord Carrier"},
-		{51.924, 4.481, 244876540, "Rotterdam Star"},
-		{47.283, -2.511, 227345670, "Bretagne Express"},
-		{37.940, 23.648, 239567890, "Aegean Horizon"},
-		{45.442, 12.317, 247234560, "Adriatic Star"},
-		{57.710, 11.976, 265789010, "Baltic Queen"},
-		{53.578, 10.017, 211567890, "Elbe Mariner"},
-		{51.509, -0.126, 232789010, "Thames Trader"},
-		{44.407, 8.948, 247890120, "Tyrrhenian Star"},
-		{63.432, 10.397, 257890120, "Arctic Dawn"},
+		{55.677, 12.571, 211345670, "Nordic Pioneer", "Kattegat"},
+		{60.393, 5.324, 257123450, "Fjord Carrier", "Norwegian North Sea"},
+		{51.924, 4.481, 244876540, "Rotterdam Star", "Southern North Sea"},
+		{47.283, -2.511, 227345670, "Bretagne Express", "Bay of Biscay"},
+		{37.940, 23.648, 239567890, "Aegean Horizon", "Aegean Sea"},
+		{45.442, 12.317, 247234560, "Adriatic Star", "Adriatic Open"},
+		{57.710, 11.976, 265789010, "Baltic Queen", "Kattegat"},
+		{53.578, 10.017, 211567890, "Elbe Mariner", "Southern North Sea"},
+		{51.509, -0.126, 232789010, "Thames Trader", "English Channel East"},
+		{44.407, 8.948, 247890120, "Tyrrhenian Star", "Ligurian Sea"},
+		{63.432, 10.397, 257890120, "Arctic Dawn", "Norwegian North Sea"},
 	}
 	for _, m := range matched {
 		_, err := pool.Exec(ctx, `
-			INSERT INTO satellite_detections (lat, lon, detected_at, source, matched_mmsi, matched_name)
-			VALUES ($1,$2,$3,'simulated',$4,$5)
-		`, m.lat, m.lon, detectedAt, m.mmsi, m.vesselName)
+			INSERT INTO satellite_detections (lat, lon, detected_at, source, scan_area, matched_mmsi, matched_name)
+			VALUES ($1,$2,$3,'simulated',$4,$5,$6)
+		`, m.lat, m.lon, detectedAt, m.scanArea, m.mmsi, m.vesselName)
 		if err != nil {
 			return fmt.Errorf("insert matched detection: %w", err)
 		}
 	}
 
 	// Unmatched detections — satellite sees a vessel but no AIS signal (dark vessel candidates)
-	unmatched := []struct{ lat, lon float64 }{
-		{51.209, 2.914},  // Shadow Phoenix last position — satellite confirms it's still there
-		{54.185, 7.895},  // Ghost Runner
-		{36.141, 5.354},  // Dark Horizon
-		{51.923, 4.479},  // Ghost Voyager
-		{55.301, 14.801}, // Invisible Tide
-		// Extra ghost contacts in shipping lanes with no known vessel
-		{50.891, 1.412},  // Dover Strait ghost
-		{36.012, -5.803}, // Gibraltar ghost
-		{43.512, 7.198},  // Ligurian Sea ghost
+	unmatched := []struct {
+		lat, lon float64
+		scanArea string
+	}{
+		{51.209, 2.914, "English Channel East"},  // Shadow Phoenix
+		{54.185, 7.895, "Southern North Sea"},     // Ghost Runner
+		{36.141, 5.354, "Western Mediterranean"},  // Dark Horizon
+		{51.923, 4.479, "Southern North Sea"},     // Ghost Voyager
+		{55.301, 14.801, "Baltic Sea"},            // Invisible Tide
+		{50.891, 1.412, "English Channel East"},   // Dover Strait ghost
+		{36.012, -5.803, "Strait of Gibraltar"},   // Gibraltar ghost
+		{43.512, 7.198, "Ligurian Sea"},           // Ligurian Sea ghost
 	}
 	for _, u := range unmatched {
 		_, err := pool.Exec(ctx, `
-			INSERT INTO satellite_detections (lat, lon, detected_at, source)
-			VALUES ($1,$2,$3,'simulated')
-		`, u.lat, u.lon, detectedAt)
+			INSERT INTO satellite_detections (lat, lon, detected_at, source, scan_area)
+			VALUES ($1,$2,$3,'simulated',$4)
+		`, u.lat, u.lon, detectedAt, u.scanArea)
 		if err != nil {
 			return fmt.Errorf("insert unmatched detection: %w", err)
 		}

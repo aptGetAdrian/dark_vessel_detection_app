@@ -27,10 +27,10 @@ type Alert struct {
 }
 
 type Position struct {
-	Lat        float64
-	Lon        float64
-	SOG        float64
-	RecordedAt time.Time
+	Lat        float64   `json:"lat"`
+	Lon        float64   `json:"lon"`
+	SOG        float64   `json:"sog"`
+	RecordedAt time.Time `json:"recorded_at"`
 }
 
 type Stats struct {

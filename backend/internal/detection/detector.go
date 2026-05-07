@@ -13,6 +13,7 @@ type Result struct {
 	Severity   string
 	Reason     string
 	Confidence int
+	Flags      []string
 }
 
 // Analyze runs all detection signals against a vessel and its recent positions.
@@ -28,12 +29,14 @@ func Analyze(v model.Vessel, recentPositions []model.Position) *Result {
 			severity:   model.SeverityCritical,
 			confidence: 85,
 			reason:     fmt.Sprintf("AIS dark for %.0fh — exceeds 24h threshold", silence.Hours()),
+			flag:       "EXTENDED_SILENCE",
 		})
 	case silence > 6*time.Hour:
 		signals = append(signals, signal{
 			severity:   model.SeverityWarning,
 			confidence: 55,
 			reason:     fmt.Sprintf("AIS dark for %.0fh", silence.Hours()),
+			flag:       "EXTENDED_SILENCE",
 		})
 	}
 
@@ -43,6 +46,7 @@ func Analyze(v model.Vessel, recentPositions []model.Position) *Result {
 			severity:   model.SeverityWarning,
 			confidence: 65,
 			reason:     fmt.Sprintf("Reporting %s but moving at %.1f kn", v.NavStatName, v.SOG),
+			flag:       "NAVSTAT_MISMATCH",
 		})
 	}
 
@@ -52,6 +56,7 @@ func Analyze(v model.Vessel, recentPositions []model.Position) *Result {
 			severity:   model.SeverityWarning,
 			confidence: 50,
 			reason:     "No IMO or callsign on commercial vessel",
+			flag:       "IDENTITY_INCOMPLETE",
 		})
 	}
 
@@ -61,6 +66,7 @@ func Analyze(v model.Vessel, recentPositions []model.Position) *Result {
 			severity:   model.SeverityInfo,
 			confidence: 30,
 			reason:     "Invalid heading reported while underway (possible AIS spoofing)",
+			flag:       "COG_HEADING_DELTA",
 		})
 	}
 
@@ -72,6 +78,7 @@ func Analyze(v model.Vessel, recentPositions []model.Position) *Result {
 				severity:   model.SeverityCritical,
 				confidence: 90,
 				reason:     fmt.Sprintf("Impossible position jump: %.0f knots implied", implied),
+				flag:       "IMPOSSIBLE_TRAVEL",
 			})
 		}
 	}
@@ -82,8 +89,14 @@ func Analyze(v model.Vessel, recentPositions []model.Position) *Result {
 
 	worst := worstSignal(signals)
 	total := 0
+	var flags []string
+	seen := map[string]bool{}
 	for _, s := range signals {
 		total += s.confidence
+		if s.flag != "" && !seen[s.flag] {
+			flags = append(flags, s.flag)
+			seen[s.flag] = true
+		}
 	}
 	if total > 100 {
 		total = 100
@@ -93,6 +106,7 @@ func Analyze(v model.Vessel, recentPositions []model.Position) *Result {
 		Severity:   worst.severity,
 		Reason:     worst.reason,
 		Confidence: total,
+		Flags:      flags,
 	}
 }
 
@@ -100,6 +114,7 @@ type signal struct {
 	severity   string
 	confidence int
 	reason     string
+	flag       string
 }
 
 func worstSignal(signals []signal) signal {

@@ -24,8 +24,8 @@ export function formatCoord(lat: number, lon: number): string {
   return `${Math.abs(lat).toFixed(4)}°${latDir} · ${Math.abs(lon).toFixed(4)}°${lonDir}`;
 }
 
-export function formatMMSI(mmsi: string): string {
-  return mmsi.replace(/(\d{3})(\d{3})(\d{3})/, "$1 $2 $3");
+export function formatMMSI(mmsi: number | string): string {
+  return String(mmsi).replace(/(\d{3})(\d{3})(\d{3})/, "$1 $2 $3");
 }
 
 export function formatSOG(sog: number | undefined): string {

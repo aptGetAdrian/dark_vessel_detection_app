@@ -8,15 +8,15 @@ interface VesselStatusBadgeProps {
 export function VesselStatusBadge({ isDark, label }: VesselStatusBadgeProps) {
   if (isDark) {
     return (
-      <span className="inline-flex items-center gap-1.5 rounded-full bg-[#5c1a1a] px-2.5 py-1 text-xs font-bold tracking-wide text-[#f87171] border border-[#7f2b2b]">
-        <span className="size-1.5 rounded-full bg-[#f87171]" />
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-severity-critical-border bg-severity-critical-bg px-2.5 py-1 text-xs font-bold tracking-wide text-status-alert">
+        <span className="size-1.5 rounded-full bg-status-alert" />
         {label ?? "DARK"}
       </span>
     );
   }
 
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full bg-[#0c2a4a] px-2.5 py-1 text-xs font-bold tracking-wide text-status-info border border-[#1a4a7a]">
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-severity-info-border bg-severity-info-bg px-2.5 py-1 text-xs font-bold tracking-wide text-status-info">
       <span className="size-1.5 rounded-full bg-status-info" />
       ACTIVE
     </span>
@@ -25,7 +25,7 @@ export function VesselStatusBadge({ isDark, label }: VesselStatusBadgeProps) {
 
 export function AnomalyBadge() {
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full bg-[#4a3300] px-2.5 py-1 text-xs font-bold tracking-wide text-[#f59e0b] border border-[#7a5500]">
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-severity-warning-border bg-severity-warning-bg px-2.5 py-1 text-xs font-bold tracking-wide text-status-warning">
       <AlertTriangle className="size-3" />
       ANOMALY
     </span>

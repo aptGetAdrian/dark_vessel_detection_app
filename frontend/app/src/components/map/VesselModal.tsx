@@ -32,7 +32,7 @@ function Row({ label, value, anomaly = false, icon }: RowProps) {
         {icon}
         {label}
       </dt>
-      <dd className={`font-mono text-sm text-right ${anomaly ? "text-[#f87171] font-semibold" : "text-text-primary"}`}>
+      <dd className={`font-mono text-sm text-right ${anomaly ? "text-status-alert font-semibold" : "text-text-primary"}`}>
         {anomaly && <AlertTriangle className="inline size-3.5 mr-1 mb-0.5" />}
         {value}
       </dd>
@@ -66,10 +66,9 @@ export function VesselModal({ vessel, isDark, onClose }: VesselModalProps) {
         className="relative w-full max-w-md rounded-2xl border border-border-subtle bg-bg-panel shadow-panel mx-4"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
-        <div className={`flex items-center gap-3 px-5 py-4 border-b border-border-subtle border-l-4 rounded-tl-2xl rounded-tr-2xl ${isDark ? "border-l-status-alert" : "border-l-status-info"}`}>
+        <div className="flex items-center gap-3 px-5 py-4 border-b border-border-subtle rounded-t-2xl">
           <div className="flex-1 min-w-0">
-            <p className="text-lg font-bold tracking-widest text-text-primary uppercase truncate">
+            <p className="text-lg font-semibold tracking-wide text-text-primary uppercase truncate">
               {vessel.name}
             </p>
             <p className="font-mono text-xs text-text-muted mt-0.5">MMSI {formatMMSI(vessel.mmsi)}</p>
@@ -142,25 +141,25 @@ export function VesselModal({ vessel, isDark, onClose }: VesselModalProps) {
           </dl>
 
           {hasAnomalies && (
-            <div className="mt-4 rounded-lg border border-[#7a5500] bg-[#4a3300]/40 px-4 py-3 space-y-1">
-              <p className="text-xs font-semibold text-[#f59e0b] flex items-center gap-1.5">
+            <div className="mt-4 rounded-lg border border-severity-warning-border bg-severity-warning-bg/40 px-4 py-3 space-y-1">
+              <p className="text-xs font-semibold text-status-warning flex items-center gap-1.5">
                 <AlertTriangle className="size-3.5" />
                 Detected anomalies
               </p>
               {isMooredButMoving && (
-                <p className="text-xs text-text-muted">· Vessel reports <span className="text-[#f87171]">Moored</span> but SOG &gt; 0 — possible transponder manipulation</p>
+                <p className="text-xs text-text-muted">· Vessel reports <span className="text-status-alert">Moored</span> but SOG &gt; 0; possible transponder manipulation</p>
               )}
               {isMissingIdentity && (
-                <p className="text-xs text-text-muted">· <span className="text-[#f87171]">Missing IMO and callsign</span> on commercial vessel — identity unverifiable</p>
+                <p className="text-xs text-text-muted">· <span className="text-status-alert">Missing IMO and callsign</span> on commercial vessel. Identity unverifiable</p>
               )}
               {isHeadingDelta && (
-                <p className="text-xs text-text-muted">· <span className="text-[#f87171]">COG/Heading delta &gt;30°</span> — possible spoofing or GPS drift</p>
+                <p className="text-xs text-text-muted">· <span className="text-status-alert">COG/Heading delta &gt;30°</span>: possible spoofing or GPS drift</p>
               )}
               {isImpossibleTravel && (
-                <p className="text-xs text-text-muted">· <span className="text-[#f87171]">Impossible travel detected</span> — vessel moved faster than its type's maximum speed</p>
+                <p className="text-xs text-text-muted">· <span className="text-status-alert">Impossible travel detected</span>. Vessel moved faster than its type's maximum speed</p>
               )}
               {isExtendedSilence && (
-                <p className="text-xs text-text-muted">· AIS signal <span className="text-[#f87171]">silent for an extended period</span> — vessel may be operating dark</p>
+                <p className="text-xs text-text-muted">· AIS signal <span className="text-status-alert">silent for an extended period</span>. Vessel may be operating dark</p>
               )}
             </div>
           )}

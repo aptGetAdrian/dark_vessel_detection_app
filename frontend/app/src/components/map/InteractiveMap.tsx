@@ -1,19 +1,25 @@
-import { useState } from "react";
+import { useState, useRef, useCallback, useMemo } from "react";
 import Map, {
   Marker,
   Popup,
+  Source,
+  Layer,
   NavigationControl,
   ScaleControl,
 } from "react-map-gl/mapbox";
+import type { MapRef } from "react-map-gl/mapbox";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { Satellite } from "lucide-react";
-import { StatCard } from "@/components/ui/StatCard";
+import { StatusStrip } from "@/components/ui/StatCard";
 import { useDashboardCards } from "@/hooks/useDashboardCards";
 import { useVessels } from "@/hooks/useVessels";
 import { useSatelliteDetections } from "@/hooks/useSatelliteDetections";
+import { useVesselTrack } from "@/hooks/useVesselTrack";
 import { RecentAlerts } from "@/components/ui/RecentAlerts";
 import { VesselPopup } from "@/components/map/VesselPopup";
 import { VesselModal } from "@/components/map/VesselModal";
+import { VesselMarkerIcon } from "@/components/map/VesselMarkerIcon";
+import { MapLegend } from "@/components/map/MapLegend";
 import type {
   VesselAlert,
   Vessel,
@@ -68,11 +74,13 @@ export function InteractiveMap() {
     useState<SatelliteDetection | null>(null);
   const [showSatellite, setShowSatellite] = useState(false);
   const [selectedArea, setSelectedArea] = useState("");
+  const mapRef = useRef<MapRef>(null);
 
   const {
     cards,
     isLoading: cardsLoading,
     error: cardsError,
+    lastUpdated,
   } = useDashboardCards();
   const {
     vessels,
@@ -81,11 +89,34 @@ export function InteractiveMap() {
     error: vesselsError,
   } = useVessels();
   const { detections, scanAreas } = useSatelliteDetections(selectedArea);
+  const { positions: trackPositions } = useVesselTrack(
+    selectedVessel?.mmsi ?? null,
+  );
+
+  const trackGeoJSON = useMemo(() => {
+    if (trackPositions.length < 2) return null;
+    return {
+      type: "Feature" as const,
+      properties: {},
+      geometry: {
+        type: "LineString" as const,
+        coordinates: trackPositions.map((p) => [p.lon, p.lat]),
+      },
+    };
+  }, [trackPositions]);
 
   const darkMmsiSet = new Set(darkVessels.map((v) => v.mmsi));
   const alerts = darkVessels.map(darkVesselToAlert);
   const isLoading = cardsLoading || vesselsLoading;
   const error = cardsError ?? vesselsError;
+
+  const handleCenterVessel = useCallback((lat: number, lon: number) => {
+    mapRef.current?.flyTo({
+      center: [lon, lat],
+      zoom: 8,
+      duration: 1200,
+    });
+  }, []);
 
   if (!MAPBOX_TOKEN) {
     return (
@@ -105,24 +136,18 @@ export function InteractiveMap() {
 
   return (
     <section className="h-[calc(100vh-3.75rem)] w-full bg-bg-ocean px-6 py-5">
-      <div className="flex h-full flex-col gap-5">
-        {/* Stat cards */}
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-          {isLoading
-            ? Array.from({ length: 4 }).map((_, i) => (
-                <div
-                  key={i}
-                  className="h-88px animate-pulse rounded-xl border border-border-subtle bg-bg-panel shadow-panel"
-                />
-              ))
-            : cards.map((card) => <StatCard key={card.id} card={card} />)}
-        </div>
+      <div className="flex h-full flex-col gap-4">
+        {/* Status readout + last updated */}
+        {isLoading ? (
+          <div className="h-[62px] animate-pulse rounded-xl border border-border-subtle bg-bg-panel" />
+        ) : (
+          <StatusStrip cards={cards} lastUpdated={lastUpdated} error={error} />
+        )}
 
         {/* Error banner */}
         {error && (
           <p className="text-xs text-status-alert">
-            Failed to load data — check that the backend is running on port
-            8080.
+            Failed to load data. Check that the backend is running on port 8080.
           </p>
         )}
 
@@ -131,6 +156,7 @@ export function InteractiveMap() {
           {/* Map */}
           <div className="relative min-w-0 flex-1 overflow-hidden rounded-2xl border border-border-subtle bg-bg-panel shadow-panel">
             <Map
+              ref={mapRef}
               initialViewState={DEFAULT_MAP_CENTER}
               mapStyle={MAPBOX_DARK_STYLE}
               mapboxAccessToken={MAPBOX_TOKEN}
@@ -145,7 +171,7 @@ export function InteractiveMap() {
               <NavigationControl position="top-right" />
               <ScaleControl position="bottom-left" />
 
-              {/* Normal vessels — blue dot */}
+              {/* Normal vessels */}
               {vessels
                 .filter((v) => !darkMmsiSet.has(v.mmsi))
                 .map((vessel) => (
@@ -160,14 +186,16 @@ export function InteractiveMap() {
                       setSelectedVessel(vessel);
                     }}
                   >
-                    <span
-                      className="block size-3 cursor-pointer rounded-full border border-bg-ocean bg-status-info transition-transform hover:scale-150"
-                      title={vessel.name}
+                    <VesselMarkerIcon
+                      cog={vessel.cog}
+                      heading={vessel.heading}
+                      isDark={false}
+                      isSelected={selectedVessel?.mmsi === vessel.mmsi}
                     />
                   </Marker>
                 ))}
 
-              {/* Dark vessels — red dot */}
+              {/* Dark vessels */}
               {darkVessels.map((vessel) => (
                 <Marker
                   key={vessel.mmsi}
@@ -180,14 +208,15 @@ export function InteractiveMap() {
                     setSelectedVessel(vessel);
                   }}
                 >
-                  <span
-                    className="block size-3 cursor-pointer rounded-full border border-bg-ocean bg-status-alert transition-transform hover:scale-150"
-                    title={`DARK: ${vessel.name}`}
+                  <VesselMarkerIcon
+                    cog={vessel.cog}
+                    heading={vessel.heading}
+                    isDark={true}
+                    isSelected={selectedVessel?.mmsi === vessel.mmsi}
                   />
                 </Marker>
               ))}
 
-              {/* Satellite detections — diamond markers */}
               {showSatellite &&
                 detections.map((det) => (
                   <Marker
@@ -202,13 +231,11 @@ export function InteractiveMap() {
                     }}
                   >
                     <span
-                      className="block size-3 cursor-pointer rotate-45 border border-bg-ocean transition-transform hover:scale-150"
-                      style={{
-                        backgroundColor:
-                          det.matched_mmsi == null
-                            ? "#d4a24c" // amber — unmatched (dark vessel candidate)
-                            : "#4a5568", // gray — AIS-confirmed, no concern
-                      }}
+                      className={`block size-3 cursor-pointer rotate-45 border border-bg-ocean transition-transform hover:scale-150 ${
+                        det.matched_mmsi == null
+                          ? "bg-status-warning"
+                          : "bg-bg-surface"
+                      }`}
                       title={
                         det.matched_mmsi == null
                           ? "SAR: unmatched (dark vessel candidate)"
@@ -218,36 +245,24 @@ export function InteractiveMap() {
                   </Marker>
                 ))}
 
-              {/* Satellite detections — diamond markers */}
-              {showSatellite &&
-                detections.map((det) => (
-                  <Marker
-                    key={det.id}
-                    latitude={det.lat}
-                    longitude={det.lon}
-                    anchor="center"
-                    onClick={(e) => {
-                      e.originalEvent.stopPropagation();
-                      setSelectedVessel(null);
-                      setSelectedDetection(det);
+              {/* Vessel trail */}
+              {trackGeoJSON && (
+                <Source id="vessel-track" type="geojson" data={trackGeoJSON}>
+                  <Layer
+                    id="vessel-track-line"
+                    type="line"
+                    paint={{
+                      "line-color":
+                        selectedVessel && darkMmsiSet.has(selectedVessel.mmsi)
+                          ? "#df6666"
+                          : "#7aaace",
+                      "line-width": 2,
+                      "line-opacity": 0.7,
+                      "line-dasharray": [2, 2],
                     }}
-                  >
-                    <span
-                      className="block size-3 cursor-pointer rotate-45 border border-bg-ocean transition-transform hover:scale-150"
-                      style={{
-                        backgroundColor:
-                          det.matched_mmsi == null
-                            ? "#d4a24c" // amber — unmatched (dark vessel candidate)
-                            : "#4a5568", // gray — AIS-confirmed, no concern
-                      }}
-                      title={
-                        det.matched_mmsi == null
-                          ? "SAR: unmatched (dark vessel candidate)"
-                          : `SAR: matched to ${det.matched_name}`
-                      }
-                    />
-                  </Marker>
-                ))}
+                  />
+                </Source>
+              )}
 
               {selectedVessel && (
                 <VesselPopup
@@ -332,18 +347,14 @@ export function InteractiveMap() {
               )}
             </Map>
 
-            {/* Satellite layer controls — bottom-right overlay */}
+            <MapLegend showSatellite={showSatellite} />
+
             <div className="absolute bottom-8 right-3 z-10 flex items-center gap-2">
               {showSatellite && scanAreas.length > 0 && (
                 <select
                   value={selectedArea}
                   onChange={(e) => setSelectedArea(e.target.value)}
-                  className="rounded-lg border px-2 py-2 text-xs font-medium shadow-lg outline-none"
-                  style={{
-                    backgroundColor: "#151c24",
-                    borderColor: "#7aaace",
-                    color: "#f7f8f0",
-                  }}
+                  className="rounded-lg border border-accent bg-bg-panel px-2 py-2 text-xs font-medium text-text-primary shadow-lg outline-none"
                 >
                   <option value="">All areas</option>
                   {scanAreas.map((a) => (
@@ -358,21 +369,20 @@ export function InteractiveMap() {
                   if (showSatellite) setSelectedDetection(null);
                   setShowSatellite((v) => !v);
                 }}
-                className="flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium shadow-lg transition-colors"
-                style={{
-                  backgroundColor: showSatellite ? "#355872" : "#151c24",
-                  borderColor: showSatellite ? "#7aaace" : "#2a3442",
-                  color: showSatellite ? "#f7f8f0" : "#b9c2c9",
-                }}
+                className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium shadow-lg transition-colors ${
+                  showSatellite
+                    ? "border-accent bg-accent-strong text-text-primary"
+                    : "border-border-subtle bg-bg-panel text-text-muted"
+                }`}
               >
                 <Satellite size={13} />
                 Satellite Layer
                 <span
-                  className="ml-1 rounded px-1.5 py-0.5 text-[10px] font-bold"
-                  style={{
-                    backgroundColor: showSatellite ? "#7aaace22" : "#2a3442",
-                    color: showSatellite ? "#7aaace" : "#b9c2c9",
-                  }}
+                  className={`ml-1 rounded px-1.5 py-0.5 text-[10px] font-bold ${
+                    showSatellite
+                      ? "bg-accent-soft text-accent"
+                      : "bg-bg-surface text-text-muted"
+                  }`}
                 >
                   {showSatellite ? "ON" : "OFF"}
                 </span>
@@ -383,6 +393,7 @@ export function InteractiveMap() {
           <RecentAlerts
             alerts={alerts}
             className="w-80 shrink-0 overflow-hidden xl:w-96"
+            onCenterVessel={handleCenterVessel}
           />
         </div>
       </div>
