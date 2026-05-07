@@ -17,7 +17,7 @@ import (
 	"github.com/yourorg/go-backend/internal/store"
 )
 
-const crossRefRadiusNM = 5.0 // nautical miles — satellite detection match radius
+const crossRefRadiusNM = 15.0 // nautical miles — satellite detection match radius
 
 // Poller streams AIS data in real-time, persists it, runs detection, and (if
 // configured) scans Sentinel-1 SAR imagery for vessel detection cross-referencing.

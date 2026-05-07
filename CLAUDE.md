@@ -8,17 +8,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Core detection logic:** compare AIS broadcasts (who claims to be where) against satellite/SAR radar detections (who is physically present). Discrepancies = dark vessel candidates.
 
-**Planned data sources:**
-- **AIS Hub API** — real-time GPS position, name, flag of broadcasting vessels (1 req/min rate limit)
-- **Sentinel-1 SAR (Copernicus Hub)** — radar imagery detecting metallic hulls regardless of AIS state
-- **EMSA Port Data** — verify if a silent vessel was recently cleared from a European port
+**Active data sources:**
+- **aisstream.io WebSocket** — real-time AIS position + identity stream for EU waters (primary AIS source)
+- **Sentinel-1 SAR (Copernicus Data Space)** — radar imagery detecting metallic hulls regardless of AIS state
+- **AIS Hub REST API** — legacy fallback client (`internal/aishub/`), currently unused
 
 **Key use cases:**
 - Retroactive investigation: after an oil spill, identify which vessels were in the area even if AIS was off
 - Flag "Impossible Travel": AIS reports ship in Mediterranean but satellite detects matching hull in Baltic Sea
 - Identify ships staying offshore invisible to avoid port inspections
 
-**Planned infrastructure:** PostgreSQL for persistence, Firebase for hosting. Full-stack: React 19 + Vite frontend, Go backend.
+**Infrastructure:** PostgreSQL for persistence, React 19 + Vite frontend, Go 1.22 backend.
 
 ## Commands
 
@@ -33,85 +33,103 @@ npm run preview  # Preview production build
 ### Backend (`backend/`)
 ```bash
 make dev     # Hot-reload via air (install air first: go install github.com/air-verse/air@latest)
-make run     # go run ./cmd/api
+make run     # go run ./cmd/api  (sources .env automatically)
 make build   # Compile to ./bin/api
 make test    # go test -race ./...
 make lint    # golangci-lint
 make tidy    # go mod tidy && verify
 ```
 
+### Database (Docker)
+```bash
+docker start darkvessel-db   # Start existing container
+# First time:
+docker run -d --name darkvessel-db -e POSTGRES_PASSWORD=secret -e POSTGRES_DB=darkvessel -p 5432:5432 postgres:16
+```
+
 ## Architecture
 
 ```
 frontend/app/      React 19 + Vite + TypeScript + Tailwind 4 + Mapbox GL
-backend/           Go 1.22 + chi v5 + Zap logging
+backend/           Go 1.22 + chi v5 + Zap logging + pgx/v5 + gorilla/websocket
 ```
 
-**Data flow:** Frontend polls `/api/v1/vessels` and `/api/v1/vessels/dark` every 30 seconds. Vite dev proxy forwards `/api/` to `http://localhost:8080`. Backend currently returns in-memory mock data (no database yet).
+**Data flow:** aisstream.io WebSocket streams real-time AIS messages into the poller; frontend polls REST endpoints every 30s. Vite dev proxy forwards `/api/` to `http://localhost:8080`. All handlers fall back to mock data when `DATABASE_URL` is unset.
 
 ### Frontend structure
-- `src/hooks/` — `useVessels` (fetching + polling) and `useDashboardCards` (KPI derivation)
-- `src/components/` — layout, map (Mapbox markers + popups), vessel modal, alerts sidebar
-- `src/types/` — `Vessel`, `VesselAlert`, `DashboardCard` interfaces
-- `src/lib/` — `cn()` utility (clsx + tailwind-merge)
+- `src/hooks/` — `useVessels`, `useDashboardCards`, `useSatelliteDetections(area)`, `useVesselTrack(mmsi)`, `useCountUp`, `useRelativeTime`
+- `src/components/` — `InteractiveMap`, `VesselModal`, `VesselPopup`, `RecentAlerts`, `VesselStatusBadge`, `MapLegend`
+- `src/types/dashboard.ts` — `Vessel`, `VesselAlert`, `DashboardCard`, `SatelliteDetection` interfaces
+- `src/lib/api.ts` — `fetchJSON<T>(path)` helper (base URL from `VITE_API_BASE_URL`)
+- `src/lib/constants.ts` — `POLL_INTERVAL_MS=30000`, map defaults, risk thresholds
 - Path alias: `@/` → `src/`
 
 ### Backend structure
-- `cmd/api/main.go` — entry point: initialises DB, starts AIS poller, graceful shutdown
-- `internal/config/` — env-based config (DB URL, AIS Hub username, poll interval)
-- `internal/model/` — shared types: `Vessel`, `Alert`, `Position`, `Stats`
-- `internal/store/postgres.go` — PostgreSQL store (vessels, positions, alerts); schema auto-migrates on startup
-- `internal/aishub/client.go` — AIS Hub HTTP client; fetches EU waters bounding box (lat 30-72, lon -20-45)
-- `internal/detection/detector.go` — anomaly scoring: returns worst-severity `Result` or nil
-- `internal/sentinel/client.go` — Sentinel Hub OAuth2 client + SAR image fetch (POST with JavaScript evalscript)
-- `internal/sentinel/detect.go` — PNG parsing, threshold (170/255), flood-fill blob detection, pixel→lat/lon conversion
-- `internal/poller/poller.go` — two loops: AIS (every 60s) + satellite (every 12h); cross-references detections within 5 NM
-- `internal/handler/` — `VesselHandler`, `AlertHandler`, `HealthHandler`; all fall back to mock data when store is nil
-- `internal/server/` — chi router setup
+- `cmd/api/main.go` — entry point: init DB → Sentinel client → aisstream client → Poller goroutine → HTTP server
+- `internal/config/` — env-based config
+- `internal/model/` — `Vessel` (with `confidence`, `risk_score`, `anomaly_flags`), `Alert`, `Position`, `Stats`, `SatelliteDetection`, `ScanArea`
+- `internal/store/postgres.go` — PostgreSQL store; schema auto-migrates on startup
+- `internal/aisstream/client.go` — WebSocket client for `wss://stream.aisstream.io/v0/stream`; merges `PositionReport` + `ShipStaticData`; auto-reconnects with exponential backoff
+- `internal/aishub/client.go` — legacy REST client (unused)
+- `internal/detector/detector.go` — `Analyse()` returns confidence (0–100), risk_score (0–100), anomaly_flags array
+- `internal/detector/haversine.go` — `HaversineNM()` distance helper
+- `internal/detection/detector.go` — older anomaly scorer (backup impl, still referenced)
+- `internal/sentinel/client.go` — Sentinel Hub OAuth2 client + `FetchSARImage()` (512×512 PNG, 4-day window)
+- `internal/sentinel/detect.go` — PNG parsing, threshold 155/255, flood-fill blobs (2–300px), `filterLandClutter()` (drops clusters with >5 neighbors within 4km)
+- `internal/poller/poller.go` — AIS stream processor (`streamAIS` goroutine) + satellite ticker (default 12h); cross-refs detections within 5 NM
+- `internal/handler/` — `VesselHandler`, `AlertHandler`, `SatelliteHandler`, `HealthHandler`
+- `internal/server/server.go` — chi router
 - `internal/middleware/` — CORS, request logging, panic recovery
 - `pkg/response/` — `JSON()`, `Error()`, `NoContent()` helpers
 
 ### API routes
 ```
-GET /ping                                    heartbeat
+GET /ping
 GET /api/v1/health
-GET /api/v1/vessels                          all vessels (DB or mock fallback)
-GET /api/v1/vessels/dark                     vessels with last_ais older than 6 hours
-GET /api/v1/alerts?limit=N                   recent alerts (default 50, max 500)
-GET /api/v1/stats                            dashboard KPIs
-GET /api/v1/satellite/detections?hours=24    all SAR detections
-GET /api/v1/satellite/detections?unmatched=true  dark vessel candidates (no AIS match)
+GET /api/v1/vessels                              all vessels (500 limit, DB or mock)
+GET /api/v1/vessels/dark                         vessels silent >6h (200 limit)
+GET /api/v1/vessels/{mmsi}/track                 last 20 positions for a vessel
+GET /api/v1/alerts?limit=N                       recent alerts (default 50, max 500)
+GET /api/v1/stats                                dashboard KPIs
+GET /api/v1/satellite/detections?hours=24        SAR detections (?area=X, ?unmatched=true)
+GET /api/v1/satellite/areas                      list of 16 EU scan area names
 ```
 
-### Detection signals (scored in `detection/detector.go`)
-| Signal | Severity | Confidence |
-|--------|----------|------------|
-| AIS dark >24h | CRITICAL | 85 |
-| AIS dark 6-24h | WARNING | 55 |
-| Moored/anchored but SOG >0.5 kn | WARNING | 65 |
-| No IMO + no callsign on cargo/tanker | WARNING | 50 |
-| Heading=511 (invalid) while SOG >1 kn | INFO | 30 |
-| Implied speed >50 kn between positions | CRITICAL | 90 |
+### Detection signals (`detector/detector.go`)
+| Signal | Flags |
+|--------|-------|
+| AIS dark >24h | `EXTENDED_SILENCE` → CRITICAL |
+| AIS dark 6-24h | `EXTENDED_SILENCE` → WARNING |
+| Moored/anchored but SOG >0.5 kn | `NAVSTAT_MISMATCH` → WARNING |
+| No IMO + no callsign on cargo/tanker | `MISSING_IDENTITY` → WARNING |
+| Heading=511 while SOG >1 kn | `INVALID_HEADING` → INFO |
+| Implied speed >vessel max × 1.15 | `IMPOSSIBLE_TRAVEL` → CRITICAL |
 
-One alert per vessel per 6-hour window (dedup in `CreateAlertIfNew`). Confidence scores are additive (capped at 100).
+Scoring: `confidence` = 100 − penalties (lower = more suspicious). `risk_score` = additive bonuses (higher = more dangerous). One alert per vessel per 6h window (`CreateAlertIfNew`).
+
+### Satellite scan areas (16 regions in `model/satellite.go`)
+Celtic Sea, Bay of Biscay, English Channel (W+E), Southern/Central/Norwegian North Sea, Kattegat, Baltic Sea, Strait of Gibraltar, Western Mediterranean, Ligurian Sea, Tyrrhenian Sea, Ionian Sea, Adriatic Open, Aegean Sea. All bboxes placed over open ocean to minimise land clutter; density filter removes residual false positives.
 
 ## Environment Variables
 
 **Frontend** (`.env` in `frontend/app/`):
 - `VITE_MAPBOX_ACCESS_TOKEN` — required for map rendering
+- `VITE_API_BASE_URL` — backend URL (defaults to `http://localhost:8080`)
 
-**Backend** (`.env` in `backend/`, copy from `.env.example`):
-- `DATABASE_URL` — PostgreSQL connection string (omit to run with mock data)
-- `AISHUB_USERNAME` — AIS Hub account username (omit to disable poller)
-- `AIS_POLL_INTERVAL_SEC` — polling interval, minimum 60 (AIS Hub rate limit)
+**Backend** (`.env` in `backend/`):
+- `DATABASE_URL` — PostgreSQL connection string (omit for mock data fallback)
+- `AISSTREAM_API_KEY` — aisstream.io key (omit to disable AIS streaming)
+- `SENTINEL_CLIENT_ID`, `SENTINEL_CLIENT_SECRET` — Copernicus Data Space credentials (omit for simulated SAR)
+- `SENTINEL_SCAN_INTERVAL_HOURS` — SAR scan frequency (default: 12)
 - `APP_PORT=8080`, `APP_ENV=development`, `LOG_LEVEL=debug`
 
 ## Key Design Decisions
 
-- **Mock data fallback**: when `DATABASE_URL` is unset, all handlers return hardcoded vessels — keeps frontend partner unblocked
-- **Poller requires both** `DATABASE_URL` and `AISHUB_USERNAME`; either missing disables it gracefully
+- **Mock data fallback**: when `DATABASE_URL` is unset, all handlers return hardcoded vessels — keeps frontend dev unblocked
+- **WebSocket AIS**: aisstream.io pushes messages in real-time; poller merges position + static data in-memory before upsert
 - **Schema is auto-migrated** on startup via `CREATE TABLE IF NOT EXISTS` — no migration tool needed
-- **Position history** kept 24h (pruned each poll cycle); used for impossible-travel detection
+- **Position history** kept 24h (pruned each poll); satellite detections kept 48h
+- **SAR land clutter filter**: density heuristic — ships at sea are isolated, urban areas create tight clusters
 - **React Compiler enabled** in Vite config — no manual `useMemo`/`useCallback` needed
 - **Design tokens** defined in `src/index.css` as CSS variables (`--color-bg-ocean`, `--color-status-alert`, etc.) — use these instead of raw hex values
-- AIS Hub API docs: `backend/apiAnalysys.md`
+- **Makefile sources `.env`** before `go run` so env vars are available without manual export

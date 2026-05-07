@@ -10,7 +10,7 @@ import Map, {
 import type { MapRef } from "react-map-gl/mapbox";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { Satellite } from "lucide-react";
-import { StatusStrip } from "@/components/ui/StatCard";
+import { StatusStrip } from "@/components/ui/statCard";
 import { useDashboardCards } from "@/hooks/useDashboardCards";
 import { useVessels } from "@/hooks/useVessels";
 import { useSatelliteDetections } from "@/hooks/useSatelliteDetections";

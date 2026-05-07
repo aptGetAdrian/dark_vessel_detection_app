@@ -205,10 +205,10 @@ func (s *Store) GetLastPositions(ctx context.Context, mmsi int64, n int) ([]mode
 	return positions, rows.Err()
 }
 
-// PruneOldPositions deletes position records older than 24 hours.
+// PruneOldPositions deletes position records older than 72 hours.
 func (s *Store) PruneOldPositions(ctx context.Context) error {
 	_, err := s.pool.Exec(ctx,
-		`DELETE FROM positions WHERE recorded_at < NOW() - INTERVAL '24 hours'`)
+		`DELETE FROM positions WHERE recorded_at < NOW() - INTERVAL '72 hours'`)
 	return err
 }
 

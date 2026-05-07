@@ -35,6 +35,9 @@ func ExtractDetections(pngBytes []byte, area model.ScanArea) ([]model.SatelliteD
 	for _, c := range clusters {
 		cx, cy := clusterCenter(c)
 		lat, lon := pixelToLatLon(cx, cy, bounds, area)
+		if isOnLand(lat, lon) {
+			continue
+		}
 		detections = append(detections, model.SatelliteDetection{
 			Lat:    lat,
 			Lon:    lon,
