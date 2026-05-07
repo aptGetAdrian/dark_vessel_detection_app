@@ -9,7 +9,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/yourorg/go-backend/internal/aishub"
+	"github.com/yourorg/go-backend/internal/aisstream"
 	"github.com/yourorg/go-backend/internal/config"
 	"github.com/yourorg/go-backend/internal/logger"
 	"github.com/yourorg/go-backend/internal/poller"
@@ -55,17 +55,17 @@ func main() {
 		log.Warn("SENTINEL_CLIENT_ID/SECRET not set — using simulated satellite detections")
 	}
 
-	// Optional: AIS Hub + poller (requires DB)
-	var aisClient *aishub.Client
-	if cfg.AISHubUsername != "" {
-		aisClient = aishub.NewClient(cfg.AISHubUsername)
+	// Optional: aisstream.io WebSocket client (requires DB)
+	var aisClient *aisstream.Client
+	if cfg.AISStreamAPIKey != "" {
+		aisClient = aisstream.NewClient(cfg.AISStreamAPIKey, log)
 	}
 
 	if st != nil {
 		if aisClient == nil {
-			log.Warn("AISHUB_USERNAME not set — AIS polling disabled")
+			log.Warn("AISSTREAM_API_KEY not set — AIS streaming disabled")
 		}
-		p := poller.New(aisClient, sentinelClient, st, cfg.AISPollInterval, cfg.SentinelScanInterval, log)
+		p := poller.New(aisClient, sentinelClient, st, cfg.SentinelScanInterval, log)
 		go p.Start(ctx)
 	}
 

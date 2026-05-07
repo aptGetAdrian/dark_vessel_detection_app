@@ -8,13 +8,13 @@ import (
 )
 
 type Config struct {
-	AppEnv          string
-	Host            string
-	Port            string
-	LogLevel        string
-	DatabaseURL     string
-	AISHubUsername  string
-	AISPollInterval time.Duration
+	AppEnv      string
+	Host        string
+	Port        string
+	LogLevel    string
+	DatabaseURL string
+	// AISStream (aisstream.io) WebSocket streaming key
+	AISStreamAPIKey string
 	// Sentinel Hub (Copernicus Data Space Ecosystem) credentials
 	// Register free at https://dataspace.copernicus.eu
 	SentinelClientID     string
@@ -27,10 +27,6 @@ func (c *Config) Addr() string {
 }
 
 func Load() (*Config, error) {
-	pollSec, _ := strconv.Atoi(getEnv("AIS_POLL_INTERVAL_SEC", "60"))
-	if pollSec < 60 {
-		pollSec = 60 // enforce AIS Hub rate limit (1 req/min)
-	}
 	scanHours, _ := strconv.Atoi(getEnv("SENTINEL_SCAN_INTERVAL_HOURS", "12"))
 	if scanHours < 1 {
 		scanHours = 12
@@ -41,8 +37,7 @@ func Load() (*Config, error) {
 		Port:                 getEnv("APP_PORT", "8080"),
 		LogLevel:             getEnv("LOG_LEVEL", "info"),
 		DatabaseURL:          getEnv("DATABASE_URL", ""),
-		AISHubUsername:       getEnv("AISHUB_USERNAME", ""),
-		AISPollInterval:      time.Duration(pollSec) * time.Second,
+		AISStreamAPIKey:      getEnv("AISSTREAM_API_KEY", ""),
 		SentinelClientID:     getEnv("SENTINEL_CLIENT_ID", ""),
 		SentinelClientSecret: getEnv("SENTINEL_CLIENT_SECRET", ""),
 		SentinelScanInterval: time.Duration(scanHours) * time.Hour,

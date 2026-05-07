@@ -2,6 +2,7 @@ package poller
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math"
 	"math/rand"
@@ -9,7 +10,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/yourorg/go-backend/internal/aishub"
+	"github.com/yourorg/go-backend/internal/aisstream"
 	"github.com/yourorg/go-backend/internal/detection"
 	"github.com/yourorg/go-backend/internal/model"
 	"github.com/yourorg/go-backend/internal/sentinel"
@@ -18,103 +19,169 @@ import (
 
 const crossRefRadiusNM = 5.0 // nautical miles — satellite detection match radius
 
-// Poller periodically fetches AIS data, persists it, runs detection, and (if
+// Poller streams AIS data in real-time, persists it, runs detection, and (if
 // configured) scans Sentinel-1 SAR imagery for vessel detection cross-referencing.
 type Poller struct {
-	aisClient      *aishub.Client   // nil = AIS Hub disabled
-	sentinelClient *sentinel.Client // nil = Sentinel Hub disabled
+	aisClient      *aisstream.Client // nil = AIS streaming disabled
+	sentinelClient *sentinel.Client  // nil = Sentinel Hub disabled
 	store          *store.Store
-	aisInterval    time.Duration
 	satInterval    time.Duration
 	log            *zap.Logger
 }
 
 func New(
-	aisClient *aishub.Client,
+	aisClient *aisstream.Client,
 	sentinelClient *sentinel.Client,
 	st *store.Store,
-	aisInterval, satInterval time.Duration,
+	satInterval time.Duration,
 	log *zap.Logger,
 ) *Poller {
 	return &Poller{
 		aisClient:      aisClient,
 		sentinelClient: sentinelClient,
 		store:          st,
-		aisInterval:    aisInterval,
 		satInterval:    satInterval,
 		log:            log,
 	}
 }
 
-// Start runs both poll loops until ctx is cancelled. Intended to run in a goroutine.
+// Start runs the AIS stream consumer and satellite poll loop until ctx is cancelled.
 func (p *Poller) Start(ctx context.Context) {
-	p.log.Info("poller started",
-		zap.Duration("ais_interval", p.aisInterval),
-		zap.Duration("sat_interval", p.satInterval),
-	)
+	p.log.Info("poller started", zap.Duration("sat_interval", p.satInterval))
 
-	// Run immediately, then on ticker
-	if p.aisClient != nil {
-		p.pollAIS(ctx)
-	}
-	p.pollSatellite(ctx) // runs real or simulated depending on sentinelClient
+	p.pollSatellite(ctx)
 
-	aisTicker := time.NewTicker(p.aisInterval)
 	satTicker := time.NewTicker(p.satInterval)
-	defer aisTicker.Stop()
+	pruneTicker := time.NewTicker(time.Hour)
 	defer satTicker.Stop()
+	defer pruneTicker.Stop()
+
+	if p.aisClient != nil {
+		go p.streamAIS(ctx)
+	}
 
 	for {
 		select {
 		case <-ctx.Done():
 			p.log.Info("poller stopped")
 			return
-		case <-aisTicker.C:
-			if p.aisClient != nil {
-				p.pollAIS(ctx)
-			}
 		case <-satTicker.C:
 			p.pollSatellite(ctx)
+		case <-pruneTicker.C:
+			_ = p.store.PruneOldPositions(ctx)
 		}
 	}
 }
 
-// ── AIS polling ───────────────────────────────────────────────────────────────
+// ── AIS streaming ─────────────────────────────────────────────────────────────
 
-func (p *Poller) pollAIS(ctx context.Context) {
-	p.log.Debug("polling AIS Hub")
-	rawVessels, err := p.aisClient.FetchEUVessels(ctx)
-	if err != nil {
-		p.log.Error("AIS Hub fetch failed", zap.Error(err))
+func (p *Poller) streamAIS(ctx context.Context) {
+	// In-memory cache merges PositionReport + ShipStaticData before upserting.
+	vessels := make(map[int64]model.Vessel)
+
+	msgCh := p.aisClient.Stream(ctx)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case msg, ok := <-msgCh:
+			if !ok {
+				return
+			}
+			switch msg.MessageType {
+			case "PositionReport":
+				p.handlePosition(ctx, msg, vessels)
+			case "ShipStaticData":
+				p.handleStatic(ctx, msg, vessels)
+			}
+		}
+	}
+}
+
+func (p *Poller) handlePosition(ctx context.Context, msg aisstream.AISMessage, vessels map[int64]model.Vessel) {
+	var inner struct {
+		PositionReport aisstream.PositionReport `json:"PositionReport"`
+	}
+	if err := json.Unmarshal(msg.Message, &inner); err != nil {
 		return
 	}
-	p.log.Info("fetched AIS vessels", zap.Int("count", len(rawVessels)))
-
-	for _, raw := range rawVessels {
-		v := model.Vessel{
-			MMSI: raw.MMSI, Name: raw.Name, CallSign: raw.CallSign,
-			IMO: raw.IMO, Dest: raw.Dest, Lat: raw.Lat, Lon: raw.Lon,
-			SOG: raw.SOG, COG: raw.COG, Heading: raw.Heading,
-			NavStat: raw.NavStat, Type: raw.Type, Draught: raw.Draught,
-			LastAIS: raw.ParsedTime,
-		}
-		if err := p.store.UpsertVessel(ctx, v); err != nil {
-			p.log.Error("upsert vessel", zap.Int64("mmsi", v.MMSI), zap.Error(err))
-			continue
-		}
-		if err := p.store.InsertPosition(ctx, v.MMSI, v.Lat, v.Lon, v.SOG); err != nil {
-			p.log.Error("insert position", zap.Int64("mmsi", v.MMSI), zap.Error(err))
-		}
-		positions, _ := p.store.GetLastPositions(ctx, v.MMSI, 2)
-		if result := detection.Analyze(v, positions); result != nil {
-			_ = p.store.CreateAlertIfNew(ctx, model.Alert{
-				MMSI: v.MMSI, VesselName: v.Name,
-				Severity: result.Severity, Reason: result.Reason,
-				Confidence: result.Confidence, Lat: v.Lat, Lon: v.Lon,
-			})
-		}
+	pr := inner.PositionReport
+	mmsi := msg.Metadata.MMSI
+	if mmsi == 0 {
+		mmsi = pr.UserID
 	}
-	_ = p.store.PruneOldPositions(ctx)
+	if mmsi == 0 {
+		return
+	}
+
+	v := vessels[mmsi]
+	v.MMSI = mmsi
+	if msg.Metadata.ShipName != "" {
+		v.Name = msg.Metadata.ShipName
+	}
+	v.Lat = pr.Latitude
+	v.Lon = pr.Longitude
+	v.SOG = pr.Sog
+	v.COG = pr.Cog
+	v.Heading = pr.TrueHeading
+	v.NavStat = pr.NavigationalStatus
+	v.LastAIS = time.Now().UTC()
+	vessels[mmsi] = v
+
+	if err := p.store.UpsertVessel(ctx, v); err != nil {
+		p.log.Error("upsert vessel", zap.Int64("mmsi", mmsi), zap.Error(err))
+		return
+	}
+	if err := p.store.InsertPosition(ctx, mmsi, v.Lat, v.Lon, v.SOG); err != nil {
+		p.log.Error("insert position", zap.Int64("mmsi", mmsi), zap.Error(err))
+	}
+
+	positions, _ := p.store.GetLastPositions(ctx, mmsi, 2)
+	if result := detection.Analyze(v, positions); result != nil {
+		_ = p.store.CreateAlertIfNew(ctx, model.Alert{
+			MMSI: mmsi, VesselName: v.Name,
+			Severity: result.Severity, Reason: result.Reason,
+			Confidence: result.Confidence, Lat: v.Lat, Lon: v.Lon,
+		})
+	}
+}
+
+func (p *Poller) handleStatic(ctx context.Context, msg aisstream.AISMessage, vessels map[int64]model.Vessel) {
+	var inner struct {
+		ShipStaticData aisstream.ShipStaticData `json:"ShipStaticData"`
+	}
+	if err := json.Unmarshal(msg.Message, &inner); err != nil {
+		return
+	}
+	sd := inner.ShipStaticData
+	mmsi := msg.Metadata.MMSI
+	if mmsi == 0 {
+		mmsi = sd.UserID
+	}
+	if mmsi == 0 {
+		return
+	}
+
+	v := vessels[mmsi]
+	v.MMSI = mmsi
+	if sd.Name != "" {
+		v.Name = sd.Name
+	}
+	v.CallSign = sd.CallSign
+	v.IMO = sd.ImoNumber
+	v.Type = sd.Type
+	v.Draught = sd.MaximumStaticDraught
+	v.Dest = sd.Destination
+	vessels[mmsi] = v
+
+	// Only persist if we already have a position (LastAIS set); otherwise
+	// we'd upsert a vessel with zero lat/lon which is misleading.
+	if v.LastAIS.IsZero() {
+		return
+	}
+	if err := p.store.UpsertVessel(ctx, v); err != nil {
+		p.log.Error("upsert vessel (static)", zap.Int64("mmsi", mmsi), zap.Error(err))
+	}
 }
 
 // ── Satellite scanning ────────────────────────────────────────────────────────
