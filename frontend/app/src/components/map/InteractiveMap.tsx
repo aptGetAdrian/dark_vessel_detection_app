@@ -9,7 +9,7 @@ import Map, {
 } from "react-map-gl/mapbox";
 import type { MapRef } from "react-map-gl/mapbox";
 import "mapbox-gl/dist/mapbox-gl.css";
-import { Satellite } from "lucide-react";
+import { Satellite, Flame } from "lucide-react";
 import { StatusStrip } from "@/components/ui/statCard";
 import { useDashboardCards } from "@/hooks/useDashboardCards";
 import { useVessels } from "@/hooks/useVessels";
@@ -73,6 +73,7 @@ export function InteractiveMap() {
   const [selectedDetection, setSelectedDetection] =
     useState<SatelliteDetection | null>(null);
   const [showSatellite, setShowSatellite] = useState(false);
+  const [showHeatmap, setShowHeatmap] = useState(false);
   const [selectedArea, setSelectedArea] = useState("");
   const mapRef = useRef<MapRef>(null);
 
@@ -92,6 +93,15 @@ export function InteractiveMap() {
   const { positions: trackPositions } = useVesselTrack(
     selectedVessel?.mmsi ?? null,
   );
+
+  const darkVesselsGeoJSON = useMemo(() => ({
+    type: "FeatureCollection" as const,
+    features: darkVessels.map((v) => ({
+      type: "Feature" as const,
+      properties: {},
+      geometry: { type: "Point" as const, coordinates: [v.lon, v.lat] },
+    })),
+  }), [darkVessels]);
 
   const trackGeoJSON = useMemo(() => {
     if (trackPositions.length < 2) return null;
@@ -245,6 +255,30 @@ export function InteractiveMap() {
                   </Marker>
                 ))}
 
+              {/* Dark vessel heatmap */}
+              {showHeatmap && (
+                <Source id="dark-heatmap" type="geojson" data={darkVesselsGeoJSON}>
+                  <Layer
+                    id="dark-heatmap-layer"
+                    type="heatmap"
+                    paint={{
+                      "heatmap-weight": 1,
+                      "heatmap-intensity": ["interpolate", ["linear"], ["zoom"], 2, 0.6, 8, 2],
+                      "heatmap-radius": ["interpolate", ["linear"], ["zoom"], 2, 20, 8, 40],
+                      "heatmap-opacity": 0.75,
+                      "heatmap-color": [
+                        "interpolate", ["linear"], ["heatmap-density"],
+                        0,   "rgba(0,0,0,0)",
+                        0.2, "rgba(120,20,20,0.6)",
+                        0.5, "rgba(200,50,20,0.8)",
+                        0.8, "rgba(240,100,20,0.9)",
+                        1,   "rgba(255,200,50,1)",
+                      ],
+                    }}
+                  />
+                </Source>
+              )}
+
               {/* Vessel trail */}
               {trackGeoJSON && (
                 <Source id="vessel-track" type="geojson" data={trackGeoJSON}>
@@ -350,6 +384,26 @@ export function InteractiveMap() {
             <MapLegend showSatellite={showSatellite} />
 
             <div className="absolute bottom-8 right-3 z-10 flex items-center gap-2">
+              <button
+                onClick={() => setShowHeatmap((v) => !v)}
+                className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium shadow-lg transition-colors ${
+                  showHeatmap
+                    ? "border-status-alert bg-status-alert/20 text-text-primary"
+                    : "border-border-subtle bg-bg-panel text-text-muted"
+                }`}
+              >
+                <Flame size={13} />
+                Dark Vessel Heatmap
+                <span
+                  className={`ml-1 rounded px-1.5 py-0.5 text-[10px] font-bold ${
+                    showHeatmap
+                      ? "bg-status-alert/20 text-status-alert"
+                      : "bg-bg-surface text-text-muted"
+                  }`}
+                >
+                  {showHeatmap ? "ON" : "OFF"}
+                </span>
+              </button>
               {showSatellite && scanAreas.length > 0 && (
                 <select
                   value={selectedArea}

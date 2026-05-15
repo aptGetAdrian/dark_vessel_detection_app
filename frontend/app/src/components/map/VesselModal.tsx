@@ -9,6 +9,7 @@ import {
   formatCOG,
   formatHeading,
   hasFlag,
+  estimateETA,
 } from "@/lib/formatters";
 import { RISK_CRITICAL_THRESHOLD, CONFIDENCE_LOW_THRESHOLD } from "@/lib/constants";
 
@@ -51,6 +52,7 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 export function VesselModal({ vessel, isDark, onClose }: VesselModalProps) {
   const flags = vessel.anomaly_flags ?? [];
   const hasAnomalies = flags.length > 0;
+  const eta = estimateETA(vessel);
   const isMooredButMoving = hasFlag(vessel, "NAVSTAT_MISMATCH");
   const isMissingIdentity = hasFlag(vessel, "IDENTITY_INCOMPLETE");
   const isHeadingDelta = hasFlag(vessel, "COG_HEADING_DELTA");
@@ -108,6 +110,12 @@ export function VesselModal({ vessel, isDark, onClose }: VesselModalProps) {
             )}
             {vessel.dest && (
               <Row label="Destination" value={vessel.dest} />
+            )}
+            {eta && (
+              <Row
+                label="ETA"
+                value={`${eta.etaLabel} · ${eta.portName} (${eta.distanceNM} NM)`}
+              />
             )}
           </dl>
 
