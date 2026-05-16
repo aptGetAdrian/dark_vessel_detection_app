@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useMemo } from "react";
+import { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import Map, {
   Marker,
   Popup,
@@ -9,8 +9,8 @@ import Map, {
 } from "react-map-gl/mapbox";
 import type { MapRef } from "react-map-gl/mapbox";
 import "mapbox-gl/dist/mapbox-gl.css";
-import { Satellite, Flame } from "lucide-react";
-import { StatusStrip } from "@/components/ui/statCard";
+import { Satellite, Flame, Scan } from "lucide-react";
+import { StatusStrip } from "@/components/ui/StatCard";
 import { useDashboardCards } from "@/hooks/useDashboardCards";
 import { useVessels } from "@/hooks/useVessels";
 import { useSatelliteDetections } from "@/hooks/useSatelliteDetections";
@@ -20,6 +20,8 @@ import { VesselPopup } from "@/components/map/VesselPopup";
 import { VesselModal } from "@/components/map/VesselModal";
 import { VesselMarkerIcon } from "@/components/map/VesselMarkerIcon";
 import { MapLegend } from "@/components/map/MapLegend";
+import { StatStripSkeleton, AlertsSkeleton } from "@/components/ui/Skeleton";
+import { EUScanAreas } from "@/lib/scanAreas";
 import type {
   VesselAlert,
   Vessel,
@@ -94,6 +96,8 @@ export function InteractiveMap() {
     selectedVessel?.mmsi ?? null,
   );
 
+  const [showScanAreas, setShowScanAreas] = useState(false);
+
   const darkVesselsGeoJSON = useMemo(() => ({
     type: "FeatureCollection" as const,
     features: darkVessels.map((v) => ({
@@ -102,6 +106,24 @@ export function InteractiveMap() {
       geometry: { type: "Point" as const, coordinates: [v.lon, v.lat] },
     })),
   }), [darkVessels]);
+
+  const scanAreasGeoJSON = useMemo(() => ({
+    type: "FeatureCollection" as const,
+    features: EUScanAreas.map((area) => ({
+      type: "Feature" as const,
+      properties: { name: area.name },
+      geometry: {
+        type: "Polygon" as const,
+        coordinates: [[
+          [area.minLon, area.minLat],
+          [area.maxLon, area.minLat],
+          [area.maxLon, area.maxLat],
+          [area.minLon, area.maxLat],
+          [area.minLon, area.minLat],
+        ]],
+      },
+    })),
+  }), []);
 
   const trackGeoJSON = useMemo(() => {
     if (trackPositions.length < 2) return null;
@@ -116,6 +138,29 @@ export function InteractiveMap() {
   }, [trackPositions]);
 
   const darkMmsiSet = new Set(darkVessels.map((v) => v.mmsi));
+
+  const trackIsDark = selectedVessel ? darkMmsiSet.has(selectedVessel.mmsi) : false;
+  const trailColor = trackIsDark ? "#df6666" : "#7aaace";
+
+  // Animate the ghost wake glow directly on the map (avoids React re-renders)
+  useEffect(() => {
+    if (!trackGeoJSON) return;
+    const map = mapRef.current?.getMap();
+    if (!map) return;
+    let raf: number;
+    let start: number | null = null;
+    const animate = (ts: number) => {
+      if (start === null) start = ts;
+      const elapsed = (ts - start) / 1000;
+      const opacity = 0.25 + 0.2 * Math.sin(elapsed * 2);
+      if (map.getLayer("vessel-track-glow")) {
+        map.setPaintProperty("vessel-track-glow", "line-opacity", opacity);
+      }
+      raf = requestAnimationFrame(animate);
+    };
+    raf = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(raf);
+  }, [trackGeoJSON]);
   const alerts = darkVessels.map(darkVesselToAlert);
   const isLoading = cardsLoading || vesselsLoading;
   const error = cardsError ?? vesselsError;
@@ -149,7 +194,7 @@ export function InteractiveMap() {
       <div className="flex h-full flex-col gap-4">
         {/* Status readout + last updated */}
         {isLoading ? (
-          <div className="h-[62px] animate-pulse rounded-xl border border-border-subtle bg-bg-panel" />
+          <StatStripSkeleton />
         ) : (
           <StatusStrip cards={cards} lastUpdated={lastUpdated} error={error} />
         )}
@@ -255,6 +300,46 @@ export function InteractiveMap() {
                   </Marker>
                 ))}
 
+              {/* Scan area boundaries */}
+              {showScanAreas && (
+                <Source id="scan-areas" type="geojson" data={scanAreasGeoJSON}>
+                  <Layer
+                    id="scan-area-fill"
+                    type="fill"
+                    paint={{
+                      "fill-color": "#7aaace",
+                      "fill-opacity": 0.04,
+                    }}
+                  />
+                  <Layer
+                    id="scan-area-border"
+                    type="line"
+                    paint={{
+                      "line-color": "#7aaace",
+                      "line-width": 1.2,
+                      "line-opacity": 0.5,
+                      "line-dasharray": [4, 3],
+                    }}
+                  />
+                  <Layer
+                    id="scan-area-label"
+                    type="symbol"
+                    layout={{
+                      "text-field": ["get", "name"],
+                      "text-size": 11,
+                      "text-anchor": "center",
+                      "text-allow-overlap": false,
+                    }}
+                    paint={{
+                      "text-color": "#7aaace",
+                      "text-opacity": 0.7,
+                      "text-halo-color": "#0f141a",
+                      "text-halo-width": 1,
+                    }}
+                  />
+                </Source>
+              )}
+
               {/* Dark vessel heatmap */}
               {showHeatmap && (
                 <Source id="dark-heatmap" type="geojson" data={darkVesselsGeoJSON}>
@@ -279,20 +364,35 @@ export function InteractiveMap() {
                 </Source>
               )}
 
-              {/* Vessel trail */}
+              {/* Ghost Wake — animated gradient vessel trail */}
               {trackGeoJSON && (
-                <Source id="vessel-track" type="geojson" data={trackGeoJSON}>
+                <Source id="vessel-track" type="geojson" data={trackGeoJSON} lineMetrics>
+                  {/* Outer glow layer (pulsing via rAF) */}
+                  <Layer
+                    id="vessel-track-glow"
+                    type="line"
+                    paint={{
+                      "line-color": trailColor,
+                      "line-width": 8,
+                      "line-opacity": 0.25,
+                      "line-blur": 6,
+                    }}
+                  />
+                  {/* Core gradient trail */}
                   <Layer
                     id="vessel-track-line"
                     type="line"
                     paint={{
-                      "line-color":
-                        selectedVessel && darkMmsiSet.has(selectedVessel.mmsi)
-                          ? "#df6666"
-                          : "#7aaace",
-                      "line-width": 2,
-                      "line-opacity": 0.7,
-                      "line-dasharray": [2, 2],
+                      "line-width": 2.5,
+                      "line-gradient": [
+                        "interpolate",
+                        ["linear"],
+                        ["line-progress"],
+                        0, "rgba(0,0,0,0)",
+                        0.3, trackIsDark ? "rgba(223,102,102,0.3)" : "rgba(122,170,206,0.3)",
+                        0.7, trackIsDark ? "rgba(223,102,102,0.7)" : "rgba(122,170,206,0.7)",
+                        1, trailColor,
+                      ],
                     }}
                   />
                 </Source>
@@ -384,6 +484,26 @@ export function InteractiveMap() {
             <MapLegend showSatellite={showSatellite} />
 
             <div className="absolute bottom-8 right-3 z-10 flex items-center gap-2">
+              <button
+                onClick={() => setShowScanAreas((v) => !v)}
+                className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium shadow-lg transition-colors ${
+                  showScanAreas
+                    ? "border-accent bg-accent-strong text-text-primary"
+                    : "border-border-subtle bg-bg-panel text-text-muted"
+                }`}
+              >
+                <Scan size={13} />
+                Scan Areas
+                <span
+                  className={`ml-1 rounded px-1.5 py-0.5 text-[10px] font-bold ${
+                    showScanAreas
+                      ? "bg-accent-soft text-accent"
+                      : "bg-bg-surface text-text-muted"
+                  }`}
+                >
+                  {showScanAreas ? "ON" : "OFF"}
+                </span>
+              </button>
               <button
                 onClick={() => setShowHeatmap((v) => !v)}
                 className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium shadow-lg transition-colors ${

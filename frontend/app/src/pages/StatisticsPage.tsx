@@ -7,6 +7,7 @@ import { useAlerts } from "@/hooks/useAlerts";
 import { useVessels } from "@/hooks/useVessels";
 import { useSatelliteDetections } from "@/hooks/useSatelliteDetections";
 import { EUScanAreas } from "@/lib/scanAreas";
+import { KpiStripSkeleton, ChartSkeleton, TableSkeleton } from "@/components/ui/Skeleton";
 
 // ── helpers ────────────────────────────────────────────────────────────────────
 
@@ -143,9 +144,20 @@ export function StatisticsPage() {
 
   if (isLoading) {
     return (
-      <div className="flex h-[calc(100vh-3.75rem)] items-center justify-center text-text-muted text-sm">
-        Loading statistics…
-      </div>
+      <section className="min-h-[calc(100vh-3.75rem)] bg-bg-ocean px-6 py-6">
+        <div className="mx-auto max-w-7xl space-y-6">
+          <KpiStripSkeleton />
+          <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+            <ChartSkeleton />
+            <ChartSkeleton />
+          </div>
+          <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+            <ChartSkeleton />
+            <ChartSkeleton />
+          </div>
+          <TableSkeleton />
+        </div>
+      </section>
     );
   }
 

@@ -1,14 +1,37 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { AlertTriangle, Activity, Map as MapIcon, Ship } from "lucide-react";
 import type { DashboardCard, Vessel } from "@/types/dashboard";
 import { fetchJSON } from "@/lib/api";
 import { POLL_INTERVAL_MS, COVERAGE_AREA } from "@/lib/constants";
 
+const SNAPSHOT_KEY = "dv_card_snapshot";
+const SNAPSHOT_MIN_AGE_MS = 5 * 60_000;
+
+interface Snapshot {
+  values: Record<string, number>;
+  ts: number;
+}
+
+function loadSnapshot(): Snapshot | null {
+  try {
+    const raw = localStorage.getItem(SNAPSHOT_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as Snapshot;
+  } catch {
+    return null;
+  }
+}
+
+function saveSnapshot(values: Record<string, number>) {
+  const snap: Snapshot = { values, ts: Date.now() };
+  localStorage.setItem(SNAPSHOT_KEY, JSON.stringify(snap));
+}
+
 function buildCards(
   darkCount: number,
   totalCount: number,
   updatedAt: Date,
-  prevValues: Map<string, number>,
+  baseline: Record<string, number> | null,
 ): DashboardCard[] {
   const entries: { id: string; title: string; value: string | number; icon: typeof AlertTriangle; iconClass: string; iconBgClass: string }[] = [
     {
@@ -47,7 +70,7 @@ function buildCards(
 
   return entries.map((entry) => {
     const numericValue = typeof entry.value === "number" ? entry.value : null;
-    const prev = prevValues.get(entry.id) ?? null;
+    const prev = baseline?.[entry.id] ?? null;
     const delta = numericValue != null && prev != null ? numericValue - prev : null;
 
     return {
@@ -72,7 +95,6 @@ export function useDashboardCards(): UseDashboardCardsResult {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  const prevValuesRef = useRef<Map<string, number>>(new Map());
 
   const fetchAll = useCallback(async () => {
     try {
@@ -80,24 +102,27 @@ export function useDashboardCards(): UseDashboardCardsResult {
         fetchJSON<Vessel[]>("/api/v1/vessels"),
         fetchJSON<Vessel[]>("/api/v1/vessels/dark"),
       ]);
+
       const now = new Date();
-      const newCards = buildCards(
-        darkVessels.length,
-        allVessels.length,
-        now,
-        prevValuesRef.current,
-      );
+      const currentValues: Record<string, number> = {
+        "active-vessels": darkVessels.length,
+        "high-severity": darkVessels.length,
+        "vessels-tracked": allVessels.length,
+      };
+
+      const snap = loadSnapshot();
+      const snapshotIsStale = !snap || (Date.now() - snap.ts) >= SNAPSHOT_MIN_AGE_MS;
+
+      const baseline = snap?.values ?? null;
+      const newCards = buildCards(darkVessels.length, allVessels.length, now, baseline);
+
       setCards(newCards);
       setLastUpdated(now);
       setError(null);
 
-      const nextPrev = new Map<string, number>();
-      for (const card of newCards) {
-        if (typeof card.value === "number") {
-          nextPrev.set(card.id, card.value);
-        }
+      if (snapshotIsStale) {
+        saveSnapshot(currentValues);
       }
-      prevValuesRef.current = nextPrev;
     } catch (err) {
       setError(err instanceof Error ? err : new Error("Failed to fetch cards"));
     } finally {
