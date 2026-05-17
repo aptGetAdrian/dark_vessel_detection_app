@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useMemo, useEffect } from "react";
-import Map, {
+import MapGL, {
   Marker,
   Popup,
   Source,
@@ -7,7 +7,8 @@ import Map, {
   NavigationControl,
   ScaleControl,
 } from "react-map-gl/mapbox";
-import type { MapRef } from "react-map-gl/mapbox";
+import type { MapRef, MapLayerMouseEvent } from "react-map-gl/mapbox";
+import type mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { Satellite, Flame, Scan } from "lucide-react";
 import { StatusStrip } from "@/components/ui/StatCard";
@@ -18,7 +19,6 @@ import { useVesselTrack } from "@/hooks/useVesselTrack";
 import { RecentAlerts } from "@/components/ui/RecentAlerts";
 import { VesselPopup } from "@/components/map/VesselPopup";
 import { VesselModal } from "@/components/map/VesselModal";
-import { VesselMarkerIcon } from "@/components/map/VesselMarkerIcon";
 import { MapLegend } from "@/components/map/MapLegend";
 import { StatStripSkeleton, AlertsSkeleton } from "@/components/ui/Skeleton";
 import { EUScanAreas } from "@/lib/scanAreas";
@@ -31,11 +31,56 @@ import {
   DEFAULT_MAP_CENTER,
   MAPBOX_DARK_STYLE,
   RISK_CRITICAL_THRESHOLD,
+  AIS_HEADING_UNAVAILABLE,
+  AIS_COG_UNAVAILABLE,
 } from "@/lib/constants";
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN as
   | string
   | undefined;
+
+function createVesselArrowImage(color: string, size = 32): ImageData {
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d")!;
+  const cx = size / 2;
+  const scale = size / 24;
+  ctx.translate(cx, cx);
+  ctx.scale(scale, scale);
+  ctx.beginPath();
+  ctx.moveTo(0, -11);
+  ctx.lineTo(7, 9);
+  ctx.lineTo(0, 4);
+  ctx.lineTo(-7, 9);
+  ctx.closePath();
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.strokeStyle = "#0f141a";
+  ctx.lineWidth = 1.2;
+  ctx.lineJoin = "round";
+  ctx.stroke();
+  return ctx.getImageData(0, 0, size, size);
+}
+
+function createVesselCircleImage(color: string, size = 20): ImageData {
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d")!;
+  const cx = size / 2;
+  ctx.beginPath();
+  ctx.arc(cx, cx, (size - 3) / 2, 0, Math.PI * 2);
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.strokeStyle = "#0f141a";
+  ctx.lineWidth = 1.2;
+  ctx.stroke();
+  return ctx.getImageData(0, 0, size, size);
+}
+
+const VESSEL_ICON_SIZE = 32;
+const VESSEL_CIRCLE_SIZE = 20;
 
 function darkVesselToAlert(vessel: Vessel, index: number): VesselAlert {
   const hoursOffline =
@@ -137,7 +182,104 @@ export function InteractiveMap() {
     };
   }, [trackPositions]);
 
-  const darkMmsiSet = new Set(darkVessels.map((v) => v.mmsi));
+  const darkMmsiSet = useMemo(
+    () => new Set(darkVessels.map((v) => v.mmsi)),
+    [darkVessels],
+  );
+
+  const allVesselsGeoJSON = useMemo(() => {
+    const allVessels = [
+      ...vessels.map((v) => ({ ...v, _isDark: darkMmsiSet.has(v.mmsi) })),
+      ...darkVessels.map((v) => ({ ...v, _isDark: true })),
+    ];
+    const seen = new Set<number>();
+    const deduped = allVessels.filter((v) => {
+      if (seen.has(v.mmsi)) return false;
+      seen.add(v.mmsi);
+      return true;
+    });
+    return {
+      type: "FeatureCollection" as const,
+      features: deduped.map((v) => {
+        const hasDirection = !(
+          v.heading === AIS_HEADING_UNAVAILABLE &&
+          (v.cog === AIS_COG_UNAVAILABLE || v.cog === 0)
+        );
+        return {
+          type: "Feature" as const,
+          properties: {
+            mmsi: v.mmsi,
+            name: v.name,
+            isDark: v._isDark ? 1 : 0,
+            cog: v.cog,
+            hasDirection: hasDirection ? 1 : 0,
+          },
+          geometry: {
+            type: "Point" as const,
+            coordinates: [v.lon, v.lat],
+          },
+        };
+      }),
+    };
+  }, [vessels, darkVessels, darkMmsiSet]);
+
+  const [iconsLoaded, setIconsLoaded] = useState(false);
+
+  const handleMapLoad = useCallback(() => {
+    const map = mapRef.current?.getMap();
+    if (!map) return;
+    const blue = "#7aaace";
+    const red = "#df6666";
+    if (!map.hasImage("vessel-arrow-blue"))
+      map.addImage("vessel-arrow-blue", createVesselArrowImage(blue, VESSEL_ICON_SIZE), { sdf: false });
+    if (!map.hasImage("vessel-arrow-red"))
+      map.addImage("vessel-arrow-red", createVesselArrowImage(red, VESSEL_ICON_SIZE), { sdf: false });
+    if (!map.hasImage("vessel-circle-blue"))
+      map.addImage("vessel-circle-blue", createVesselCircleImage(blue, VESSEL_CIRCLE_SIZE), { sdf: false });
+    if (!map.hasImage("vessel-circle-red"))
+      map.addImage("vessel-circle-red", createVesselCircleImage(red, VESSEL_CIRCLE_SIZE), { sdf: false });
+    setIconsLoaded(true);
+  }, []);
+
+  const allVesselsMap = useMemo(() => {
+    const map = new Map<number, Vessel>();
+    for (const v of vessels) map.set(v.mmsi, v);
+    for (const v of darkVessels) map.set(v.mmsi, v);
+    return map;
+  }, [vessels, darkVessels]);
+
+  const handleClusterClick = useCallback(
+    (e: MapLayerMouseEvent) => {
+      const feature = e.features?.[0];
+      if (!feature) return;
+      const clusterId = feature.properties?.cluster_id;
+      const map = mapRef.current?.getMap();
+      if (!map || clusterId == null) return;
+      const source = map.getSource("vessels-clustered") as mapboxgl.GeoJSONSource | undefined;
+      if (!source) return;
+      source.getClusterExpansionZoom(clusterId).then((zoom) => {
+        const coords = (feature.geometry as GeoJSON.Point).coordinates;
+        map.easeTo({ center: [coords[0], coords[1]], zoom: zoom + 0.5, duration: 500 });
+      });
+    },
+    [],
+  );
+
+  const handleUnclusteredClick = useCallback(
+    (e: MapLayerMouseEvent) => {
+      const feature = e.features?.[0];
+      if (!feature) return;
+      const mmsi = feature.properties?.mmsi;
+      if (mmsi == null) return;
+      const vessel = allVesselsMap.get(Number(mmsi));
+      if (vessel) {
+        setSelectedDetection(null);
+        setSelectedVessel(vessel);
+      }
+      e.originalEvent?.stopPropagation();
+    },
+    [allVesselsMap],
+  );
 
   const trackIsDark = selectedVessel ? darkMmsiSet.has(selectedVessel.mmsi) : false;
   const trailColor = trackIsDark ? "#df6666" : "#7aaace";
@@ -210,7 +352,7 @@ export function InteractiveMap() {
         <div className="flex min-h-0 flex-1 gap-5">
           {/* Map */}
           <div className="relative min-w-0 flex-1 overflow-hidden rounded-2xl border border-border-subtle bg-bg-panel shadow-panel">
-            <Map
+            <MapGL
               ref={mapRef}
               initialViewState={DEFAULT_MAP_CENTER}
               mapStyle={MAPBOX_DARK_STYLE}
@@ -218,59 +360,134 @@ export function InteractiveMap() {
               attributionControl={false}
               reuseMaps
               style={{ width: "100%", height: "100%" }}
-              onClick={() => {
+              cursor="auto"
+              onLoad={handleMapLoad}
+              onMouseEnter={() => {
+                const canvas = mapRef.current?.getMap()?.getCanvas();
+                if (canvas) canvas.style.cursor = "pointer";
+              }}
+              onMouseLeave={() => {
+                const canvas = mapRef.current?.getMap()?.getCanvas();
+                if (canvas) canvas.style.cursor = "";
+              }}
+              onClick={(e: MapLayerMouseEvent) => {
+                const feature = e.features?.[0];
+                if (feature) {
+                  const layerId = feature.layer?.id;
+                  if (layerId === "vessel-clusters") {
+                    handleClusterClick(e);
+                    return;
+                  }
+                  if (layerId === "vessel-unclustered-arrows" || layerId === "vessel-unclustered-circles") {
+                    handleUnclusteredClick(e);
+                    return;
+                  }
+                }
                 setSelectedVessel(null);
                 setSelectedDetection(null);
               }}
+              interactiveLayerIds={["vessel-clusters", "vessel-unclustered-arrows", "vessel-unclustered-circles"]}
             >
               <NavigationControl position="top-right" />
               <ScaleControl position="bottom-left" />
 
-              {/* Normal vessels */}
-              {vessels
-                .filter((v) => !darkMmsiSet.has(v.mmsi))
-                .map((vessel) => (
-                  <Marker
-                    key={vessel.mmsi}
-                    latitude={vessel.lat}
-                    longitude={vessel.lon}
-                    anchor="center"
-                    onClick={(e) => {
-                      e.originalEvent.stopPropagation();
-                      setSelectedDetection(null);
-                      setSelectedVessel(vessel);
-                    }}
-                  >
-                    <VesselMarkerIcon
-                      cog={vessel.cog}
-                      heading={vessel.heading}
-                      isDark={false}
-                      isSelected={selectedVessel?.mmsi === vessel.mmsi}
-                    />
-                  </Marker>
-                ))}
-
-              {/* Dark vessels */}
-              {darkVessels.map((vessel) => (
-                <Marker
-                  key={vessel.mmsi}
-                  latitude={vessel.lat}
-                  longitude={vessel.lon}
-                  anchor="center"
-                  onClick={(e) => {
-                    e.originalEvent.stopPropagation();
-                    setSelectedDetection(null);
-                    setSelectedVessel(vessel);
-                  }}
+              {/* Clustered vessel source */}
+              {iconsLoaded && (
+                <Source
+                  id="vessels-clustered"
+                  type="geojson"
+                  data={allVesselsGeoJSON}
+                  cluster
+                  clusterMaxZoom={12}
+                  clusterRadius={50}
                 >
-                  <VesselMarkerIcon
-                    cog={vessel.cog}
-                    heading={vessel.heading}
-                    isDark={true}
-                    isSelected={selectedVessel?.mmsi === vessel.mmsi}
+                  {/* Cluster circles */}
+                  <Layer
+                    id="vessel-clusters"
+                    type="circle"
+                    filter={["has", "point_count"]}
+                    paint={{
+                      "circle-color": [
+                        "step",
+                        ["get", "point_count"],
+                        "#355872",
+                        20, "#2a6b5a",
+                        50, "#5c4a1a",
+                      ],
+                      "circle-radius": [
+                        "step",
+                        ["get", "point_count"],
+                        18,
+                        20, 24,
+                        50, 30,
+                      ],
+                      "circle-stroke-width": 2,
+                      "circle-stroke-color": "#0f141a",
+                      "circle-opacity": 0.9,
+                    }}
                   />
-                </Marker>
-              ))}
+
+                  {/* Cluster count labels */}
+                  <Layer
+                    id="vessel-cluster-count"
+                    type="symbol"
+                    filter={["has", "point_count"]}
+                    layout={{
+                      "text-field": ["get", "point_count_abbreviated"],
+                      "text-size": 12,
+                      "text-font": ["DIN Pro Medium", "Arial Unicode MS Bold"],
+                      "text-allow-overlap": true,
+                    }}
+                    paint={{
+                      "text-color": "#f7f8f0",
+                    }}
+                  />
+
+                  {/* Unclustered vessel arrows (with heading) */}
+                  <Layer
+                    id="vessel-unclustered-arrows"
+                    type="symbol"
+                    filter={["all",
+                      ["!", ["has", "point_count"]],
+                      ["==", ["get", "hasDirection"], 1],
+                    ]}
+                    layout={{
+                      "icon-image": [
+                        "case",
+                        ["==", ["get", "isDark"], 1],
+                        "vessel-arrow-red",
+                        "vessel-arrow-blue",
+                      ],
+                      "icon-size": 0.56,
+                      "icon-rotate": ["get", "cog"],
+                      "icon-rotation-alignment": "map",
+                      "icon-allow-overlap": true,
+                      "icon-ignore-placement": true,
+                    }}
+                  />
+
+                  {/* Unclustered vessel circles (no heading) */}
+                  <Layer
+                    id="vessel-unclustered-circles"
+                    type="symbol"
+                    filter={["all",
+                      ["!", ["has", "point_count"]],
+                      ["==", ["get", "hasDirection"], 0],
+                    ]}
+                    layout={{
+                      "icon-image": [
+                        "case",
+                        ["==", ["get", "isDark"], 1],
+                        "vessel-circle-red",
+                        "vessel-circle-blue",
+                      ],
+                      "icon-size": 0.7,
+                      "icon-allow-overlap": true,
+                      "icon-ignore-placement": true,
+                    }}
+                  />
+                </Source>
+              )}
 
               {showSatellite &&
                 detections.map((det) => (
@@ -479,7 +696,7 @@ export function InteractiveMap() {
                   </div>
                 </Popup>
               )}
-            </Map>
+            </MapGL>
 
             <MapLegend showSatellite={showSatellite} />
 

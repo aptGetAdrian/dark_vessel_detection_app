@@ -27,7 +27,7 @@ export function useVesselTrack(mmsi: number | null): UseVesselTrackResult {
 
     fetchJSON<TrackPosition[]>(`/api/v1/vessels/${mmsi}/track`)
       .then((data) => {
-        if (!cancelled) setPositions(data);
+        if (!cancelled) setPositions(data ?? []);
       })
       .catch((err) => {
         if (!cancelled) setError(err instanceof Error ? err : new Error("Failed to fetch track"));

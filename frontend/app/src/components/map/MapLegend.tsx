@@ -37,6 +37,16 @@ const VESSEL_ENTRIES: LegendEntry[] = [
     shape: "rounded-full bg-status-info",
   },
   {
+    label: "Cluster",
+    sublabel: "Grouped vessels",
+    icon: (
+      <svg viewBox="0 0 16 16" width="14" height="14">
+        <circle cx="8" cy="8" r="7" fill="#355872" stroke="#0f141a" strokeWidth="1.2" />
+        <text x="8" y="11" textAnchor="middle" fill="#f7f8f0" fontSize="8" fontWeight="600">n</text>
+      </svg>
+    ),
+  },
+  {
     label: "Vessel track",
     sublabel: "Position history",
     icon: (

@@ -32,7 +32,13 @@ func New(cfg *config.Config, log *zap.Logger, st *store.Store) *Server {
 	r.Use(middleware.Logger(log))
 	r.Use(chimiddleware.Heartbeat("/ping"))
 
-	r.Mount("/api/v1", v1Router(log, st))
+	sources := handler.DataSources{
+		Database:  st != nil,
+		AISStream: cfg.AISStreamAPIKey != "",
+		Sentinel:  cfg.SentinelClientID != "" && cfg.SentinelClientSecret != "",
+	}
+
+	r.Mount("/api/v1", v1Router(log, st, sources))
 
 	return &Server{
 		httpServer: &http.Server{Addr: cfg.Addr(), Handler: r},
@@ -40,10 +46,10 @@ func New(cfg *config.Config, log *zap.Logger, st *store.Store) *Server {
 	}
 }
 
-func v1Router(log *zap.Logger, st *store.Store) chi.Router {
+func v1Router(log *zap.Logger, st *store.Store, sources handler.DataSources) chi.Router {
 	r := chi.NewRouter()
 
-	r.Get("/health", handler.NewHealthHandler(log).Health)
+	r.Get("/health", handler.NewHealthHandler(log, sources).Health)
 
 	vessels := handler.NewVesselHandler(log, st)
 	r.Get("/vessels", vessels.GetAll)

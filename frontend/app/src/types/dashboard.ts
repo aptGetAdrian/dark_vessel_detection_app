@@ -70,3 +70,12 @@ export interface SatelliteDetection {
   matched_name: string;
   created_at: string;
 }
+
+export interface HealthStatus {
+  status: string;
+  sources: {
+    database: boolean;
+    ais_stream: boolean;
+    sentinel: boolean;
+  };
+}
