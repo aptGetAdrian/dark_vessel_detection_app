@@ -395,3 +395,244 @@ func scanSatDetections(rows pgx.Rows) ([]model.SatelliteDetection, error) {
 	}
 	return dets, rows.Err()
 }
+
+// ── Analytics ────────────────────────────────────────────────────────────────
+
+func (s *Store) GetZoneAnalytics(ctx context.Context, hours int) ([]model.ZoneStats, error) {
+	rows, err := s.pool.Query(ctx, `
+		WITH det AS (
+			SELECT scan_area,
+			       COUNT(*)                                            AS total,
+			       COUNT(*) FILTER (WHERE matched_mmsi IS NOT NULL)    AS matched,
+			       COUNT(*) FILTER (WHERE matched_mmsi IS NULL)        AS unmatched
+			FROM satellite_detections
+			WHERE detected_at > NOW() - ($1 * interval '1 hour')
+			  AND scan_area != ''
+			GROUP BY scan_area
+		),
+		dark AS (
+			SELECT sd.scan_area, COUNT(DISTINCT v.mmsi) AS cnt
+			FROM satellite_detections sd
+			JOIN vessels v ON v.mmsi = sd.matched_mmsi
+			WHERE sd.detected_at > NOW() - ($1 * interval '1 hour')
+			  AND v.last_ais < NOW() - INTERVAL '6 hours'
+			  AND sd.scan_area != ''
+			GROUP BY sd.scan_area
+		),
+		alrt AS (
+			SELECT sd.scan_area,
+			       COUNT(*)                                         AS total,
+			       COUNT(*) FILTER (WHERE a.severity = 'CRITICAL')  AS critical
+			FROM alerts a
+			JOIN satellite_detections sd ON sd.matched_mmsi = a.mmsi
+			WHERE a.created_at > NOW() - ($1 * interval '1 hour')
+			  AND sd.scan_area != ''
+			GROUP BY sd.scan_area
+		),
+		risk AS (
+			SELECT sd.scan_area, AVG(CASE
+				WHEN v.last_ais < NOW() - INTERVAL '24 hours' THEN 85
+				WHEN v.last_ais < NOW() - INTERVAL '6 hours'  THEN 60
+				ELSE 20
+			END) AS avg_risk
+			FROM satellite_detections sd
+			JOIN vessels v ON v.mmsi = sd.matched_mmsi
+			WHERE sd.detected_at > NOW() - ($1 * interval '1 hour')
+			  AND sd.scan_area != ''
+			GROUP BY sd.scan_area
+		)
+		SELECT d.scan_area,
+		       d.total,
+		       d.matched,
+		       d.unmatched,
+		       CASE WHEN d.total > 0 THEN d.matched::float / d.total ELSE 0 END,
+		       COALESCE(dk.cnt, 0),
+		       COALESCE(al.total, 0),
+		       COALESCE(al.critical, 0),
+		       COALESCE(r.avg_risk, 0)
+		FROM det d
+		LEFT JOIN dark dk ON dk.scan_area = d.scan_area
+		LEFT JOIN alrt al ON al.scan_area = d.scan_area
+		LEFT JOIN risk r  ON r.scan_area = d.scan_area
+		ORDER BY d.total DESC
+	`, hours)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var zones []model.ZoneStats
+	for rows.Next() {
+		var z model.ZoneStats
+		if err := rows.Scan(&z.Name, &z.TotalDetections, &z.MatchedCount,
+			&z.UnmatchedCount, &z.MatchRate, &z.DarkVessels,
+			&z.AlertCount, &z.CriticalAlerts, &z.AvgRiskScore); err != nil {
+			return nil, err
+		}
+		zones = append(zones, z)
+	}
+	return zones, rows.Err()
+}
+
+func (s *Store) GetZoneDetail(ctx context.Context, area string, hours int) (*model.ZoneDetail, error) {
+	var z model.ZoneStats
+	z.Name = area
+	err := s.pool.QueryRow(ctx, `
+		SELECT
+			COUNT(*),
+			COUNT(*) FILTER (WHERE matched_mmsi IS NOT NULL),
+			COUNT(*) FILTER (WHERE matched_mmsi IS NULL)
+		FROM satellite_detections
+		WHERE scan_area = $1 AND detected_at > NOW() - ($2 * interval '1 hour')
+	`, area, hours).Scan(&z.TotalDetections, &z.MatchedCount, &z.UnmatchedCount)
+	if err != nil {
+		return nil, err
+	}
+	if z.TotalDetections > 0 {
+		z.MatchRate = float64(z.MatchedCount) / float64(z.TotalDetections)
+	}
+
+	// Dark vessels in zone
+	_ = s.pool.QueryRow(ctx, `
+		SELECT COUNT(DISTINCT v.mmsi)
+		FROM satellite_detections sd
+		JOIN vessels v ON v.mmsi = sd.matched_mmsi
+		WHERE sd.scan_area = $1
+		  AND sd.detected_at > NOW() - ($2 * interval '1 hour')
+		  AND v.last_ais < NOW() - INTERVAL '6 hours'
+	`, area, hours).Scan(&z.DarkVessels)
+
+	// Alerts in zone
+	_ = s.pool.QueryRow(ctx, `
+		SELECT COUNT(*), COUNT(*) FILTER (WHERE a.severity = 'CRITICAL')
+		FROM alerts a
+		JOIN satellite_detections sd ON sd.matched_mmsi = a.mmsi
+		WHERE sd.scan_area = $1 AND a.created_at > NOW() - ($2 * interval '1 hour')
+	`, area, hours).Scan(&z.AlertCount, &z.CriticalAlerts)
+
+	// Avg risk
+	_ = s.pool.QueryRow(ctx, `
+		SELECT COALESCE(AVG(CASE
+			WHEN v.last_ais < NOW() - INTERVAL '24 hours' THEN 85
+			WHEN v.last_ais < NOW() - INTERVAL '6 hours'  THEN 60
+			ELSE 20
+		END), 0)
+		FROM satellite_detections sd
+		JOIN vessels v ON v.mmsi = sd.matched_mmsi
+		WHERE sd.scan_area = $1 AND sd.detected_at > NOW() - ($2 * interval '1 hour')
+	`, area, hours).Scan(&z.AvgRiskScore)
+
+	detail := &model.ZoneDetail{ZoneStats: z}
+
+	// Vessel type breakdown
+	typeRows, err := s.pool.Query(ctx, `
+		SELECT COALESCE(NULLIF(v.vessel_type, 0), 90), COUNT(DISTINCT v.mmsi)
+		FROM satellite_detections sd
+		JOIN vessels v ON v.mmsi = sd.matched_mmsi
+		WHERE sd.scan_area = $1 AND sd.detected_at > NOW() - ($2 * interval '1 hour')
+		GROUP BY 1 ORDER BY 2 DESC LIMIT 8
+	`, area, hours)
+	if err == nil {
+		defer typeRows.Close()
+		for typeRows.Next() {
+			var vt, cnt int
+			if err := typeRows.Scan(&vt, &cnt); err == nil {
+				detail.VesselTypeBreakdown = append(detail.VesselTypeBreakdown,
+					model.NameCount{Name: vesselTypeName(vt), Count: cnt})
+			}
+		}
+	}
+
+	// Alert severity breakdown
+	sevRows, err := s.pool.Query(ctx, `
+		SELECT a.severity, COUNT(*)
+		FROM alerts a
+		JOIN satellite_detections sd ON sd.matched_mmsi = a.mmsi
+		WHERE sd.scan_area = $1 AND a.created_at > NOW() - ($2 * interval '1 hour')
+		GROUP BY a.severity
+	`, area, hours)
+	if err == nil {
+		defer sevRows.Close()
+		for sevRows.Next() {
+			var nc model.NameCount
+			if err := sevRows.Scan(&nc.Name, &nc.Count); err == nil {
+				detail.AlertSeverityBreakdown = append(detail.AlertSeverityBreakdown, nc)
+			}
+		}
+	}
+
+	// Recent alerts
+	alertRows, err := s.pool.Query(ctx, `
+		SELECT a.id, a.mmsi, a.vessel_name, a.severity, a.reason, a.confidence,
+		       a.lat, a.lon, a.status, a.created_at, a.updated_at
+		FROM alerts a
+		JOIN satellite_detections sd ON sd.matched_mmsi = a.mmsi
+		WHERE sd.scan_area = $1
+		ORDER BY a.created_at DESC LIMIT 10
+	`, area)
+	if err == nil {
+		defer alertRows.Close()
+		for alertRows.Next() {
+			var a model.Alert
+			if err := alertRows.Scan(&a.ID, &a.MMSI, &a.VesselName, &a.Severity, &a.Reason,
+				&a.Confidence, &a.Lat, &a.Lon, &a.Status, &a.CreatedAt, &a.UpdatedAt); err == nil {
+				detail.RecentAlerts = append(detail.RecentAlerts, a)
+			}
+		}
+	}
+
+	// Recent detections
+	detRows, err := s.pool.Query(ctx, `
+		SELECT id, lat, lon, detected_at, source, scan_area, matched_mmsi, matched_name, created_at
+		FROM satellite_detections
+		WHERE scan_area = $1 ORDER BY detected_at DESC LIMIT 10
+	`, area)
+	if err == nil {
+		defer detRows.Close()
+		dets, _ := scanSatDetections(detRows)
+		detail.RecentDetections = dets
+	}
+
+	return detail, nil
+}
+
+func (s *Store) GetAnalyticsOverview(ctx context.Context, hours int) (*model.AnalyticsOverview, error) {
+	var o model.AnalyticsOverview
+	var matchedCount int
+	err := s.pool.QueryRow(ctx, `
+		SELECT
+			COUNT(*),
+			COUNT(*) FILTER (WHERE matched_mmsi IS NOT NULL),
+			COUNT(DISTINCT scan_area) FILTER (WHERE scan_area != '')
+		FROM satellite_detections
+		WHERE detected_at > NOW() - ($1 * interval '1 hour')
+	`, hours).Scan(&o.TotalDetections, &matchedCount, &o.ZonesCovered)
+	if err != nil {
+		return nil, err
+	}
+	if o.TotalDetections > 0 {
+		o.OverallMatchRate = float64(matchedCount) / float64(o.TotalDetections)
+	}
+
+	_ = s.pool.QueryRow(ctx, `
+		SELECT COALESCE(sd.scan_area, 'Unknown')
+		FROM satellite_detections sd
+		JOIN vessels v ON v.mmsi = sd.matched_mmsi
+		WHERE sd.detected_at > NOW() - ($1 * interval '1 hour')
+		  AND v.last_ais < NOW() - INTERVAL '6 hours'
+		  AND sd.scan_area != ''
+		GROUP BY sd.scan_area
+		ORDER BY COUNT(*) DESC LIMIT 1
+	`, hours).Scan(&o.HighestRiskZone)
+
+	_ = s.pool.QueryRow(ctx, `
+		SELECT COUNT(*) FROM vessels WHERE last_ais < NOW() - INTERVAL '6 hours'
+	`).Scan(&o.TotalDarkVessels)
+
+	_ = s.pool.QueryRow(ctx, `
+		SELECT COUNT(*) FROM alerts
+		WHERE status != 'RESOLVED' AND created_at > NOW() - ($1 * interval '1 hour')
+	`, hours).Scan(&o.TotalAlerts)
+
+	return &o, nil
+}

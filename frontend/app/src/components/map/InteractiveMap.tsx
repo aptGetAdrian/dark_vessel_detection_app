@@ -225,6 +225,13 @@ export function InteractiveMap() {
 
   const [iconsLoaded, setIconsLoaded] = useState(false);
 
+  useEffect(() => {
+    const map = mapRef.current?.getMap();
+    if (map && map.isStyleLoaded()) {
+      handleMapLoad();
+    }
+  });
+
   const handleMapLoad = useCallback(() => {
     const map = mapRef.current?.getMap();
     if (!map) return;

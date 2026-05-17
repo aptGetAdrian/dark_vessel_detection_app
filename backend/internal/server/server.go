@@ -64,6 +64,11 @@ func v1Router(log *zap.Logger, st *store.Store, sources handler.DataSources) chi
 	r.Get("/satellite/detections", sat.GetDetections)
 	r.Get("/satellite/areas", sat.GetScanAreas)
 
+	analytics := handler.NewAnalyticsHandler(log, st)
+	r.Get("/analytics/overview", analytics.GetOverview)
+	r.Get("/analytics/zones", analytics.GetZones)
+	r.Get("/analytics/zones/{area}", analytics.GetZoneDetail)
+
 	return r
 }
 

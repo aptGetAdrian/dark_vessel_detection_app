@@ -1,7 +1,7 @@
 import { Bell, Search } from "lucide-react";
 import type { HealthStatus } from "@/types/dashboard";
 
-type Page = "dashboard" | "statistics";
+type Page = "dashboard" | "statistics" | "zones";
 
 interface HeaderProps {
   page: Page;
@@ -85,7 +85,7 @@ export function Header({ page, onNavigate, health, healthError }: HeaderProps) {
           aria-label="Primary navigation"
           className="absolute left-1/2 hidden -translate-x-1/2 items-center gap-1 md:flex"
         >
-          {(["dashboard", "statistics"] as Page[]).map((p) => (
+          {(["dashboard", "statistics", "zones"] as Page[]).map((p) => (
             <button
               key={p}
               type="button"
