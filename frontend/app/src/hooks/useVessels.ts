@@ -20,11 +20,11 @@ export function useVessels(): UseVesselsResult {
   const fetchAll = useCallback(async () => {
     try {
       const [all, dark] = await Promise.all([
-        fetchJSON<Vessel[]>("/api/v1/vessels"),
-        fetchJSON<Vessel[]>("/api/v1/vessels/dark"),
+        fetchJSON<Vessel[] | null>("/api/v1/vessels"),
+        fetchJSON<Vessel[] | null>("/api/v1/vessels/dark"),
       ]);
-      setVessels(all);
-      setDarkVessels(dark);
+      setVessels(all ?? []);
+      setDarkVessels(dark ?? []);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err : new Error("Failed to fetch vessels"));

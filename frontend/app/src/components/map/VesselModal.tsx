@@ -45,7 +45,7 @@ function Row({ label, value, anomaly = false, icon }: RowProps) {
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
-    <p className="text-xs font-semibold uppercase tracking-widest text-text-muted mb-1 mt-4 first:mt-0">
+    <p className="text-xs font-semibold uppercase tracking-wide text-text-muted mb-1 mt-4 first:mt-0">
       {children}
     </p>
   );
@@ -214,12 +214,16 @@ export function VesselModal({ vessel, isDark, onClose }: VesselModalProps) {
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
       onClick={onClose}
+      onKeyDown={(e) => { if (e.key === "Escape") onClose(); }}
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Vessel details: ${vessel.name}`}
     >
       <div
-        className="relative w-full max-w-md rounded-2xl border border-border-subtle bg-bg-panel shadow-panel mx-4"
+        className="relative mx-4 w-full max-w-md rounded-xl border border-border-subtle bg-bg-panel shadow-panel lg:rounded-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center gap-3 px-5 py-4 border-b border-border-subtle rounded-t-2xl">
+        <div className="flex items-center gap-3 rounded-t-xl border-b border-border-subtle px-5 py-4 lg:rounded-t-2xl">
           <div className="flex-1 min-w-0">
             <p className="text-lg font-semibold tracking-wide text-text-primary uppercase truncate">
               {vessel.name}

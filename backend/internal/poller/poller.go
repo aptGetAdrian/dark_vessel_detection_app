@@ -187,8 +187,7 @@ func (p *Poller) handleStatic(ctx context.Context, msg aisstream.AISMessage, ves
 // ── Satellite scanning ────────────────────────────────────────────────────────
 
 func (p *Poller) pollSatellite(ctx context.Context) {
-	// Load current AIS vessels for cross-referencing
-	vessels, err := p.store.GetVessels(ctx)
+	vessels, err := p.store.GetAllVessels(ctx)
 	if err != nil {
 		p.log.Error("load vessels for cross-reference", zap.Error(err))
 		return
@@ -211,10 +210,11 @@ func (p *Poller) pollSatellite(ctx context.Context) {
 	now := time.Now().UTC()
 	for i := range detections {
 		detections[i].DetectedAt = now
-		nearest := nearestVessel(detections[i].Lat, detections[i].Lon, vessels, crossRefRadiusNM)
+		nearest, distNM := nearestVessel(detections[i].Lat, detections[i].Lon, vessels, crossRefRadiusNM)
 		if nearest != nil {
 			detections[i].MatchedMMSI = &nearest.MMSI
 			detections[i].MatchedName = nearest.Name
+			detections[i].MatchDistanceNM = &distNM
 		}
 
 		if err := p.store.InsertSatelliteDetection(ctx, detections[i]); err != nil {
@@ -222,7 +222,6 @@ func (p *Poller) pollSatellite(ctx context.Context) {
 			continue
 		}
 
-		// Unmatched detection = vessel physically present but not broadcasting AIS
 		if detections[i].MatchedMMSI == nil {
 			_ = p.store.CreateAlertIfNew(ctx, model.Alert{
 				MMSI:       0,
@@ -270,10 +269,13 @@ func (p *Poller) simulateDetections(vessels []model.Vessel) []model.SatelliteDet
 
 	for _, v := range vessels {
 		noise := func() float64 { return (rand.Float64() - 0.5) * 0.02 } // ~1 NM noise
+		lat := v.Lat + noise()
+		lon := v.Lon + noise()
 		dets = append(dets, model.SatelliteDetection{
-			Lat:    v.Lat + noise(),
-			Lon:    v.Lon + noise(),
-			Source: "simulated",
+			Lat:      lat,
+			Lon:      lon,
+			Source:   "simulated",
+			ScanArea: scanAreaForPoint(lat, lon),
 		})
 	}
 
@@ -286,19 +288,31 @@ func (p *Poller) simulateDetections(vessels []model.Vessel) []model.SatelliteDet
 		{54.8, 10.5}, // Kiel Bight
 	}
 	for _, g := range ghosts {
+		lat := g.lat + (rand.Float64()-0.5)*0.05
+		lon := g.lon + (rand.Float64()-0.5)*0.05
 		dets = append(dets, model.SatelliteDetection{
-			Lat:    g.lat + (rand.Float64()-0.5)*0.05,
-			Lon:    g.lon + (rand.Float64()-0.5)*0.05,
-			Source: "simulated",
+			Lat:      lat,
+			Lon:      lon,
+			Source:   "simulated",
+			ScanArea: scanAreaForPoint(lat, lon),
 		})
 	}
 	return dets
 }
 
+func scanAreaForPoint(lat, lon float64) string {
+	for _, a := range model.EUScanAreas {
+		if lat >= a.MinLat && lat <= a.MaxLat && lon >= a.MinLon && lon <= a.MaxLon {
+			return a.Name
+		}
+	}
+	return ""
+}
+
 // ── Geometry ──────────────────────────────────────────────────────────────────
 
-// nearestVessel returns the closest AIS vessel within maxDistNM, or nil.
-func nearestVessel(lat, lon float64, vessels []model.Vessel, maxDistNM float64) *model.Vessel {
+// nearestVessel returns the closest AIS vessel within maxDistNM and the distance, or nil.
+func nearestVessel(lat, lon float64, vessels []model.Vessel, maxDistNM float64) (*model.Vessel, float64) {
 	var closest *model.Vessel
 	min := maxDistNM
 	for i := range vessels {
@@ -308,7 +322,7 @@ func nearestVessel(lat, lon float64, vessels []model.Vessel, maxDistNM float64) 
 			closest = &vessels[i]
 		}
 	}
-	return closest
+	return closest, min
 }
 
 func haversineNM(lat1, lon1, lat2, lon2 float64) float64 {

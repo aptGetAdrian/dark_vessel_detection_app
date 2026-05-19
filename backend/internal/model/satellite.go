@@ -4,15 +4,16 @@ import "time"
 
 // SatelliteDetection represents a vessel-like object detected in a SAR radar image.
 type SatelliteDetection struct {
-	ID          int64     `json:"id"`
-	Lat         float64   `json:"lat"`
-	Lon         float64   `json:"lon"`
-	DetectedAt  time.Time `json:"detected_at"`
-	Source      string    `json:"source"`    // "sentinel-1" or "simulated"
-	ScanArea    string    `json:"scan_area"` // e.g. "North Sea"
-	MatchedMMSI *int64    `json:"matched_mmsi"`
-	MatchedName string    `json:"matched_name"`
-	CreatedAt   time.Time `json:"created_at"`
+	ID              int64     `json:"id"`
+	Lat             float64   `json:"lat"`
+	Lon             float64   `json:"lon"`
+	DetectedAt      time.Time `json:"detected_at"`
+	Source          string    `json:"source"`    // "sentinel-1" or "simulated"
+	ScanArea        string    `json:"scan_area"` // e.g. "North Sea"
+	MatchedMMSI     *int64    `json:"matched_mmsi"`
+	MatchedName     string    `json:"matched_name"`
+	MatchDistanceNM *float64  `json:"match_distance_nm"`
+	CreatedAt       time.Time `json:"created_at"`
 }
 
 // ScanArea is a geographic bounding box to scan for vessels.

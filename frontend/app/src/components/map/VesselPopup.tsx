@@ -33,7 +33,7 @@ export function VesselPopup({ vessel, isDark, onClose, onViewMore }: VesselPopup
           </span>
           <button
             onClick={onClose}
-            className="shrink-0 rounded p-0.5 text-text-muted transition-colors hover:bg-bg-surface hover:text-text-primary"
+            className="shrink-0 rounded p-1 text-text-muted transition-colors hover:bg-bg-surface hover:text-text-primary"
             aria-label="Close"
           >
             <X className="size-3.5" />

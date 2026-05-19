@@ -180,10 +180,10 @@ function AlertRow({ alert, isExpanded, onToggle, onCenter }: AlertRowProps) {
         </div>
 
         <div className="flex items-center justify-between gap-2">
-          <p className="text-sm font-semibold tracking-wide text-text-primary truncate">
+          <p className="truncate text-sm font-semibold tracking-wide text-text-primary">
             {alert.vesselName}
           </p>
-          <span className="flex shrink-0 items-center gap-1 text-[10px] text-text-muted">
+          <span className="flex shrink-0 items-center gap-1 text-[11px] text-text-muted">
             <Clock className="size-2.5" />
             {formatAlertTime(alert.timestamp)}
           </span>

@@ -2,17 +2,7 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
 } from "recharts";
 import type { ZoneStats, ZoneMetric } from "@/types/analytics";
-
-const chartTooltipStyle = {
-  contentStyle: {
-    background: "#1a2330",
-    border: "1px solid #2a3442",
-    borderRadius: 8,
-    fontSize: 12,
-    color: "#f7f8f0",
-  },
-  cursor: { fill: "rgba(255,255,255,0.04)" },
-};
+import { chartTooltipStyle } from "@/lib/chartTheme";
 
 const METRIC_LABELS: Record<ZoneMetric, string> = {
   detections: "Total Detections",
@@ -48,7 +38,7 @@ export function ZoneRankedBars({ zones, metric, selectedZone, onSelectZone }: Pr
 
   return (
     <div className="rounded-xl border border-border-subtle bg-bg-panel p-5 shadow-panel">
-      <p className="mb-4 text-xs font-semibold uppercase tracking-widest text-text-muted">
+      <p className="mb-4 text-xs font-semibold uppercase tracking-wide text-text-muted">
         {METRIC_LABELS[metric]} by Zone
       </p>
       {sorted.length === 0 ? (

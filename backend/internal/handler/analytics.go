@@ -45,6 +45,9 @@ func (h *AnalyticsHandler) GetZones(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusInternalServerError, "failed to fetch zone analytics")
 		return
 	}
+	if zones == nil {
+		zones = []model.ZoneStats{}
+	}
 	response.JSON(w, http.StatusOK, zones)
 }
 

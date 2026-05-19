@@ -7,8 +7,7 @@ import MapGL, {
   NavigationControl,
   ScaleControl,
 } from "react-map-gl/mapbox";
-import type { MapRef, MapLayerMouseEvent } from "react-map-gl/mapbox";
-import type mapboxgl from "mapbox-gl";
+import type { MapRef, MapMouseEvent } from "react-map-gl/mapbox";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { Satellite, Flame, Scan } from "lucide-react";
 import { StatusStrip } from "@/components/ui/StatCard";
@@ -20,7 +19,7 @@ import { RecentAlerts } from "@/components/ui/RecentAlerts";
 import { VesselPopup } from "@/components/map/VesselPopup";
 import { VesselModal } from "@/components/map/VesselModal";
 import { MapLegend } from "@/components/map/MapLegend";
-import { StatStripSkeleton, AlertsSkeleton } from "@/components/ui/Skeleton";
+import { StatStripSkeleton } from "@/components/ui/Skeleton";
 import { EUScanAreas } from "@/lib/scanAreas";
 import type {
   VesselAlert,
@@ -225,13 +224,6 @@ export function InteractiveMap() {
 
   const [iconsLoaded, setIconsLoaded] = useState(false);
 
-  useEffect(() => {
-    const map = mapRef.current?.getMap();
-    if (map && map.isStyleLoaded()) {
-      handleMapLoad();
-    }
-  });
-
   const handleMapLoad = useCallback(() => {
     const map = mapRef.current?.getMap();
     if (!map) return;
@@ -248,6 +240,13 @@ export function InteractiveMap() {
     setIconsLoaded(true);
   }, []);
 
+  useEffect(() => {
+    const map = mapRef.current?.getMap();
+    if (map && map.isStyleLoaded() && !iconsLoaded) {
+      handleMapLoad();
+    }
+  }, [iconsLoaded, handleMapLoad]);
+
   const allVesselsMap = useMemo(() => {
     const map = new Map<number, Vessel>();
     for (const v of vessels) map.set(v.mmsi, v);
@@ -256,15 +255,17 @@ export function InteractiveMap() {
   }, [vessels, darkVessels]);
 
   const handleClusterClick = useCallback(
-    (e: MapLayerMouseEvent) => {
+    (e: MapMouseEvent) => {
       const feature = e.features?.[0];
       if (!feature) return;
       const clusterId = feature.properties?.cluster_id;
       const map = mapRef.current?.getMap();
       if (!map || clusterId == null) return;
-      const source = map.getSource("vessels-clustered") as mapboxgl.GeoJSONSource | undefined;
-      if (!source) return;
-      source.getClusterExpansionZoom(clusterId).then((zoom) => {
+      const source = map.getSource("vessels-clustered");
+      if (!source || source.type !== "geojson") return;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (source as any).getClusterExpansionZoom(clusterId, (_err: unknown, zoom: number) => {
+        if (zoom == null) return;
         const coords = (feature.geometry as GeoJSON.Point).coordinates;
         map.easeTo({ center: [coords[0], coords[1]], zoom: zoom + 0.5, duration: 500 });
       });
@@ -273,7 +274,7 @@ export function InteractiveMap() {
   );
 
   const handleUnclusteredClick = useCallback(
-    (e: MapLayerMouseEvent) => {
+    (e: MapMouseEvent) => {
       const feature = e.features?.[0];
       if (!feature) return;
       const mmsi = feature.properties?.mmsi;
@@ -324,13 +325,13 @@ export function InteractiveMap() {
 
   if (!MAPBOX_TOKEN) {
     return (
-      <section className="flex h-[calc(100vh-3.75rem)] items-center justify-center bg-bg-ocean px-6">
-        <div className="max-w-lg rounded-lg border border-border-subtle bg-bg-panel p-6 text-center">
+      <section className="flex h-[calc(100vh-3.5rem)] items-center justify-center bg-bg-ocean px-6">
+        <div className="max-w-lg rounded-xl border border-border-subtle bg-bg-panel p-6 text-center shadow-panel">
           <h2 className="text-lg font-semibold text-text-primary">
             Mapbox token required
           </h2>
           <p className="mt-2 text-sm text-text-muted">
-            Add <code>VITE_MAPBOX_ACCESS_TOKEN</code> to your .env file to load
+            Add <code className="rounded bg-bg-surface px-1.5 py-0.5 text-xs">VITE_MAPBOX_ACCESS_TOKEN</code> to your .env file to load
             the interactive map.
           </p>
         </div>
@@ -339,7 +340,7 @@ export function InteractiveMap() {
   }
 
   return (
-    <section className="h-[calc(100vh-3.75rem)] w-full bg-bg-ocean px-6 py-5">
+    <section className="h-[calc(100vh-3.5rem)] w-full bg-bg-ocean px-5 py-4 lg:px-6 lg:py-5">
       <div className="flex h-full flex-col gap-4">
         {/* Status readout + last updated */}
         {isLoading ? (
@@ -356,9 +357,9 @@ export function InteractiveMap() {
         )}
 
         {/* Map + Alerts row */}
-        <div className="flex min-h-0 flex-1 gap-5">
+        <div className="flex min-h-0 flex-1 gap-4 lg:gap-5">
           {/* Map */}
-          <div className="relative min-w-0 flex-1 overflow-hidden rounded-2xl border border-border-subtle bg-bg-panel shadow-panel">
+          <div className="relative min-w-0 flex-1 overflow-hidden rounded-xl border border-border-subtle bg-bg-panel shadow-panel lg:rounded-2xl">
             <MapGL
               ref={mapRef}
               initialViewState={DEFAULT_MAP_CENTER}
@@ -377,7 +378,7 @@ export function InteractiveMap() {
                 const canvas = mapRef.current?.getMap()?.getCanvas();
                 if (canvas) canvas.style.cursor = "";
               }}
-              onClick={(e: MapLayerMouseEvent) => {
+              onClick={(e: MapMouseEvent) => {
                 const feature = e.features?.[0];
                 if (feature) {
                   const layerId = feature.layer?.id;
@@ -707,52 +708,38 @@ export function InteractiveMap() {
 
             <MapLegend showSatellite={showSatellite} />
 
-            <div className="absolute bottom-8 right-3 z-10 flex items-center gap-2">
+            <div className="absolute bottom-6 right-3 z-10 flex flex-wrap items-center justify-end gap-2">
               <button
+                type="button"
+                aria-pressed={showScanAreas}
                 onClick={() => setShowScanAreas((v) => !v)}
-                className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium shadow-lg transition-colors ${
+                className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium shadow-lg transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${
                   showScanAreas
                     ? "border-accent bg-accent-strong text-text-primary"
-                    : "border-border-subtle bg-bg-panel text-text-muted"
+                    : "border-border-subtle bg-bg-panel text-text-muted hover:text-text-primary"
                 }`}
               >
                 <Scan size={13} />
                 Scan Areas
-                <span
-                  className={`ml-1 rounded px-1.5 py-0.5 text-[10px] font-bold ${
-                    showScanAreas
-                      ? "bg-accent-soft text-accent"
-                      : "bg-bg-surface text-text-muted"
-                  }`}
-                >
-                  {showScanAreas ? "ON" : "OFF"}
-                </span>
               </button>
               <button
+                type="button"
+                aria-pressed={showHeatmap}
                 onClick={() => setShowHeatmap((v) => !v)}
-                className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium shadow-lg transition-colors ${
+                className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium shadow-lg transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${
                   showHeatmap
                     ? "border-status-alert bg-status-alert/20 text-text-primary"
-                    : "border-border-subtle bg-bg-panel text-text-muted"
+                    : "border-border-subtle bg-bg-panel text-text-muted hover:text-text-primary"
                 }`}
               >
                 <Flame size={13} />
-                Dark Vessel Heatmap
-                <span
-                  className={`ml-1 rounded px-1.5 py-0.5 text-[10px] font-bold ${
-                    showHeatmap
-                      ? "bg-status-alert/20 text-status-alert"
-                      : "bg-bg-surface text-text-muted"
-                  }`}
-                >
-                  {showHeatmap ? "ON" : "OFF"}
-                </span>
+                Heatmap
               </button>
               {showSatellite && scanAreas.length > 0 && (
                 <select
                   value={selectedArea}
                   onChange={(e) => setSelectedArea(e.target.value)}
-                  className="rounded-lg border border-accent bg-bg-panel px-2 py-2 text-xs font-medium text-text-primary shadow-lg outline-none"
+                  className="rounded-lg border border-accent bg-bg-panel px-2 py-2 text-xs font-medium text-text-primary shadow-lg outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
                 >
                   <option value="">All areas</option>
                   {scanAreas.map((a) => (
@@ -763,34 +750,27 @@ export function InteractiveMap() {
                 </select>
               )}
               <button
+                type="button"
+                aria-pressed={showSatellite}
                 onClick={() => {
                   if (showSatellite) setSelectedDetection(null);
                   setShowSatellite((v) => !v);
                 }}
-                className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium shadow-lg transition-colors ${
+                className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium shadow-lg transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${
                   showSatellite
                     ? "border-accent bg-accent-strong text-text-primary"
-                    : "border-border-subtle bg-bg-panel text-text-muted"
+                    : "border-border-subtle bg-bg-panel text-text-muted hover:text-text-primary"
                 }`}
               >
                 <Satellite size={13} />
-                Satellite Layer
-                <span
-                  className={`ml-1 rounded px-1.5 py-0.5 text-[10px] font-bold ${
-                    showSatellite
-                      ? "bg-accent-soft text-accent"
-                      : "bg-bg-surface text-text-muted"
-                  }`}
-                >
-                  {showSatellite ? "ON" : "OFF"}
-                </span>
+                Satellite
               </button>
             </div>
           </div>
 
           <RecentAlerts
             alerts={alerts}
-            className="w-80 shrink-0 overflow-hidden xl:w-96"
+            className="hidden w-80 shrink-0 overflow-hidden md:flex xl:w-96"
             onCenterVessel={handleCenterVessel}
           />
         </div>

@@ -68,6 +68,7 @@ export interface SatelliteDetection {
   scan_area: string;
   matched_mmsi: number | null;
   matched_name: string;
+  match_distance_nm: number | null;
   created_at: string;
 }
 

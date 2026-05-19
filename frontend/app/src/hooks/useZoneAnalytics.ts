@@ -38,8 +38,8 @@ export function useZoneAnalytics(timeRange: TimeRange): UseZoneAnalyticsResult {
           ),
         ]);
         if (!cancelled) {
-          setZones(z);
-          setOverview(o);
+          setZones(Array.isArray(z) ? z : []);
+          setOverview(o ?? null);
           setError(null);
         }
       } catch (err) {

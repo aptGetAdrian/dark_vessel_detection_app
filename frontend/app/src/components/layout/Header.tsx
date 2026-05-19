@@ -1,4 +1,5 @@
-import { Bell, Search } from "lucide-react";
+import { useState } from "react";
+import { Menu, X } from "lucide-react";
 import type { HealthStatus } from "@/types/dashboard";
 
 type Page = "dashboard" | "statistics" | "zones";
@@ -67,66 +68,89 @@ function ConnectionIndicator({
   );
 }
 
+const NAV_ITEMS: { key: Page; label: string }[] = [
+  { key: "dashboard", label: "Dashboard" },
+  { key: "statistics", label: "Statistics" },
+  { key: "zones", label: "Zones" },
+];
+
 export function Header({ page, onNavigate, health, healthError }: HeaderProps) {
+  const [mobileOpen, setMobileOpen] = useState(false);
+
   return (
     <header className="sticky top-0 z-40 w-full border-b border-border-subtle bg-bg-panel">
-      <div className="relative mx-auto flex h-15 w-full max-w-7xl items-center justify-between px-6 lg:px-8">
-        <div className="flex items-center gap-4">
-          <a
-            href="#"
-            className="text-base font-semibold tracking-tight text-text-primary"
-          >
+      <div className="relative mx-auto flex h-14 w-full max-w-7xl items-center justify-between px-5 lg:px-8">
+        <div className="flex items-center gap-3">
+          <span className="text-base font-semibold tracking-tight text-text-primary">
             Heimdal
-          </a>
-          <ConnectionIndicator health={health} healthError={healthError} />
+          </span>
+          <span className="hidden sm:block">
+            <ConnectionIndicator health={health} healthError={healthError} />
+          </span>
         </div>
 
         <nav
           aria-label="Primary navigation"
           className="absolute left-1/2 hidden -translate-x-1/2 items-center gap-1 md:flex"
         >
-          {(["dashboard", "statistics", "zones"] as Page[]).map((p) => (
+          {NAV_ITEMS.map((item) => (
             <button
-              key={p}
+              key={item.key}
               type="button"
-              onClick={() => onNavigate(p)}
-              className={`rounded-md px-3 py-1.5 text-sm font-medium capitalize transition-colors ${
-                page === p
+              onClick={() => onNavigate(item.key)}
+              className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${
+                page === item.key
                   ? "bg-bg-surface text-text-primary"
                   : "text-text-muted hover:text-text-primary"
               }`}
             >
-              {p}
+              {item.label}
             </button>
           ))}
         </nav>
 
-        <nav aria-label="Header actions" className="flex items-center gap-1">
+        <div className="flex items-center gap-2">
+          <span className="block sm:hidden">
+            <ConnectionIndicator health={health} healthError={healthError} />
+          </span>
           <button
             type="button"
-            aria-label="Search"
-            className="rounded-md p-2.5 text-text-muted transition-colors hover:bg-bg-surface hover:text-text-primary"
+            onClick={() => setMobileOpen((v) => !v)}
+            aria-label={mobileOpen ? "Close menu" : "Open menu"}
+            aria-expanded={mobileOpen}
+            className="rounded-md p-2 text-text-muted transition-colors hover:bg-bg-surface hover:text-text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent md:hidden"
           >
-            <Search className="size-4" />
+            {mobileOpen ? <X className="size-5" /> : <Menu className="size-5" />}
           </button>
-          <button
-            type="button"
-            aria-label="Notifications"
-            className="rounded-md p-2.5 text-text-muted transition-colors hover:bg-bg-surface hover:text-text-primary"
-          >
-            <Bell className="size-4" />
-          </button>
-          <button
-            type="button"
-            className="hidden items-center gap-2 rounded-md p-1 transition-colors hover:bg-bg-surface md:inline-flex"
-          >
-            <span className="flex size-8 items-center justify-center rounded-full bg-bg-surface text-xs font-semibold text-text-primary">
-              TM
-            </span>
-            <span className="pr-1 text-sm font-medium text-text-muted">Account</span>
-          </button>
-        </nav>
+        </div>
       </div>
+
+      {mobileOpen && (
+        <nav
+          aria-label="Mobile navigation"
+          className="border-t border-border-subtle bg-bg-panel px-5 pb-3 pt-2 md:hidden"
+        >
+          <div className="flex flex-col gap-1">
+            {NAV_ITEMS.map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => {
+                  onNavigate(item.key);
+                  setMobileOpen(false);
+                }}
+                className={`rounded-md px-3 py-2 text-left text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${
+                  page === item.key
+                    ? "bg-bg-surface text-text-primary"
+                    : "text-text-muted hover:text-text-primary"
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        </nav>
+      )}
     </header>
   );
 }

@@ -1,8 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import type { SatelliteDetection } from "@/types/dashboard";
-
-const API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "http://localhost:8080";
-const POLL_INTERVAL_MS = 60_000;
+import { API_BASE, POLL_INTERVAL_MS } from "@/lib/constants";
 
 interface UseSatelliteDetectionsResult {
   detections: SatelliteDetection[];
@@ -20,7 +18,7 @@ export function useSatelliteDetections(selectedArea: string): UseSatelliteDetect
   useEffect(() => {
     fetch(`${API_BASE}/api/v1/satellite/areas`)
       .then((r) => r.json())
-      .then((d) => setScanAreas(d as string[]))
+      .then((d) => setScanAreas(Array.isArray(d) ? d : []))
       .catch(() => {});
   }, []);
 
@@ -30,7 +28,8 @@ export function useSatelliteDetections(selectedArea: string): UseSatelliteDetect
       if (selectedArea) params.set("area", selectedArea);
       const res = await fetch(`${API_BASE}/api/v1/satellite/detections?${params}`);
       if (!res.ok) throw new Error(`satellite/detections returned ${res.status}`);
-      setDetections(await res.json() as SatelliteDetection[]);
+      const data = await res.json();
+      setDetections(Array.isArray(data) ? data : []);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err : new Error("Failed to fetch satellite detections"));

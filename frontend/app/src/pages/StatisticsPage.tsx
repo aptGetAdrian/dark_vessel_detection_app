@@ -5,11 +5,12 @@ import {
 import { AlertTriangle, Radio, Satellite, Ship } from "lucide-react";
 import { useAlerts } from "@/hooks/useAlerts";
 import { useVessels } from "@/hooks/useVessels";
+import { useStats } from "@/hooks/useStats";
 import { useSatelliteDetections } from "@/hooks/useSatelliteDetections";
 import { EUScanAreas } from "@/lib/scanAreas";
 import { KpiStripSkeleton, ChartSkeleton, TableSkeleton } from "@/components/ui/Skeleton";
-
-// ── helpers ────────────────────────────────────────────────────────────────────
+import { KpiCard } from "@/components/ui/KpiCard";
+import { SEVERITY_COLOR, TYPE_COLORS, chartTooltipStyle } from "@/lib/chartTheme";
 
 function categoriseReason(reason: string): string {
   const r = reason.toLowerCase();
@@ -31,68 +32,23 @@ function regionForCoord(lat: number, lon: number): string {
   return "Other";
 }
 
-const SEVERITY_COLOR: Record<string, string> = {
-  CRITICAL: "#df6666",
-  WARNING:  "#d4a24c",
-  INFO:     "#7aaace",
-};
-
-const TYPE_COLORS = [
-  "#7aaace", "#d4a24c", "#df6666", "#6abd8a", "#a07ace", "#c0c0c0",
-];
-
-// ── sub-components ─────────────────────────────────────────────────────────────
-
-function KpiCard({
-  icon, label, value, sub, color,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: number | string;
-  sub?: string;
-  color: string;
-}) {
-  return (
-    <div className="flex items-center gap-4 rounded-xl border border-border-subtle bg-bg-panel px-5 py-4 shadow-panel">
-      <div className={`flex size-10 shrink-0 items-center justify-center rounded-lg ${color}`}>
-        {icon}
-      </div>
-      <div>
-        <p className="text-xs text-text-muted">{label}</p>
-        <p className="text-2xl font-bold text-text-primary">{value}</p>
-        {sub && <p className="text-xs text-text-muted">{sub}</p>}
-      </div>
-    </div>
-  );
-}
-
 function PanelTitle({ children }: { children: React.ReactNode }) {
   return (
-    <p className="mb-4 text-xs font-semibold uppercase tracking-widest text-text-muted">
+    <p className="mb-4 text-xs font-semibold uppercase tracking-wide text-text-muted">
       {children}
     </p>
   );
 }
 
-const chartTooltipStyle = {
-  contentStyle: {
-    background: "#1a2330",
-    border: "1px solid #2a3442",
-    borderRadius: 8,
-    fontSize: 12,
-    color: "#f7f8f0",
-  },
-  cursor: { fill: "rgba(255,255,255,0.04)" },
-};
-
 // ── page ──────────────────────────────────────────────────────────────────────
 
 export function StatisticsPage() {
   const { alerts, isLoading: alertsLoading } = useAlerts(500);
-  const { vessels, darkVessels, isLoading: vesselsLoading } = useVessels();
+  const { darkVessels, isLoading: vesselsLoading } = useVessels();
+  const { stats, isLoading: statsLoading } = useStats();
   const { detections } = useSatelliteDetections("");
 
-  const isLoading = alertsLoading || vesselsLoading;
+  const isLoading = alertsLoading || vesselsLoading || statsLoading;
 
   // Alert type breakdown
   const typeCounts = alerts.reduce<Record<string, number>>((acc, a) => {
@@ -144,7 +100,7 @@ export function StatisticsPage() {
 
   if (isLoading) {
     return (
-      <section className="min-h-[calc(100vh-3.75rem)] bg-bg-ocean px-6 py-6">
+      <section className="min-h-[calc(100vh-3.5rem)] bg-bg-ocean px-6 py-6">
         <div className="mx-auto max-w-7xl space-y-6">
           <KpiStripSkeleton />
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
@@ -162,7 +118,7 @@ export function StatisticsPage() {
   }
 
   return (
-    <section className="min-h-[calc(100vh-3.75rem)] bg-bg-ocean px-6 py-6">
+    <section className="min-h-[calc(100vh-3.5rem)] bg-bg-ocean px-6 py-6">
       <div className="mx-auto max-w-7xl space-y-6">
 
         {/* KPI strip */}
@@ -170,21 +126,21 @@ export function StatisticsPage() {
           <KpiCard
             icon={<Ship className="size-5 text-status-info" />}
             label="Vessels tracked"
-            value={vessels.length}
+            value={stats?.total_vessels ?? 0}
             color="bg-status-info/10"
           />
           <KpiCard
             icon={<Radio className="size-5 text-status-alert" />}
             label="Dark vessels"
-            value={darkVessels.length}
-            sub={vessels.length ? `${Math.round((darkVessels.length / vessels.length) * 100)}% of fleet` : undefined}
+            value={stats?.dark_vessels ?? 0}
+            sub={stats && stats.total_vessels ? `${Math.round((stats.dark_vessels / stats.total_vessels) * 100)}% of fleet` : undefined}
             color="bg-status-alert/10"
           />
           <KpiCard
             icon={<AlertTriangle className="size-5 text-status-warning" />}
             label="Active alerts"
-            value={alerts.filter((a) => a.status === "NEW").length}
-            sub={`${alerts.filter((a) => a.severity === "CRITICAL").length} critical`}
+            value={stats?.active_alerts ?? 0}
+            sub={`${stats?.critical_alerts ?? 0} critical`}
             color="bg-status-warning/10"
           />
           <KpiCard
@@ -226,7 +182,7 @@ export function StatisticsPage() {
             {severityData.length === 0 ? (
               <p className="text-sm text-text-muted">No alerts recorded yet.</p>
             ) : (
-              <ResponsiveContainer width="100%" height={220}>
+              <ResponsiveContainer width="100%" height={280}>
                 <PieChart>
                   <Pie
                     data={severityData}
@@ -237,8 +193,8 @@ export function StatisticsPage() {
                     innerRadius={55}
                     outerRadius={85}
                     paddingAngle={3}
-                    label={({ name, percent }) =>
-                      `${name} ${(percent * 100).toFixed(0)}%`
+                    label={(props) =>
+                      `${props.name ?? ""} ${((props.percent ?? 0) * 100).toFixed(0)}%`
                     }
                     labelLine={false}
                   >
@@ -299,45 +255,49 @@ export function StatisticsPage() {
         {/* Recent alerts table */}
         <div className="rounded-xl border border-border-subtle bg-bg-panel p-5 shadow-panel">
           <PanelTitle>Recent alerts ({alerts.length})</PanelTitle>
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b border-border-subtle text-left text-text-muted">
-                  <th className="pb-2 pr-4 font-medium">Severity</th>
-                  <th className="pb-2 pr-4 font-medium">Vessel</th>
-                  <th className="pb-2 pr-4 font-medium">Reason</th>
-                  <th className="pb-2 pr-4 font-medium">Confidence</th>
-                  <th className="pb-2 font-medium">Time</th>
-                </tr>
-              </thead>
-              <tbody>
-                {alerts.slice(0, 50).map((a) => (
-                  <tr key={a.id} className="border-b border-border-subtle/40 hover:bg-bg-surface/40">
-                    <td className="py-2 pr-4">
-                      <span
-                        className="rounded px-1.5 py-0.5 text-[10px] font-bold uppercase"
-                        style={{
-                          background: `${SEVERITY_COLOR[a.severity]}22`,
-                          color: SEVERITY_COLOR[a.severity],
-                        }}
-                      >
-                        {a.severity}
-                      </span>
-                    </td>
-                    <td className="py-2 pr-4 font-medium text-text-primary">{a.vessel_name}</td>
-                    <td className="max-w-xs truncate py-2 pr-4 text-text-muted">{a.reason}</td>
-                    <td className="py-2 pr-4 text-text-muted">{a.confidence}%</td>
-                    <td className="py-2 text-text-muted">
-                      {new Date(a.created_at).toLocaleString(undefined, {
-                        month: "short", day: "numeric",
-                        hour: "2-digit", minute: "2-digit",
-                      })}
-                    </td>
+          {alerts.length === 0 ? (
+            <p className="py-8 text-center text-sm text-text-muted">No alerts recorded yet.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-border-subtle text-left text-text-muted">
+                    <th className="pb-2 pr-4 font-medium">Severity</th>
+                    <th className="pb-2 pr-4 font-medium">Vessel</th>
+                    <th className="pb-2 pr-4 font-medium">Reason</th>
+                    <th className="pb-2 pr-4 font-medium">Confidence</th>
+                    <th className="pb-2 font-medium">Time</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {alerts.slice(0, 50).map((a) => (
+                    <tr key={a.id} className="border-b border-border-subtle/40 transition-colors hover:bg-bg-surface/40">
+                      <td className="py-2 pr-4">
+                        <span
+                          className="rounded px-1.5 py-0.5 text-[10px] font-bold uppercase"
+                          style={{
+                            background: `${SEVERITY_COLOR[a.severity]}22`,
+                            color: SEVERITY_COLOR[a.severity],
+                          }}
+                        >
+                          {a.severity}
+                        </span>
+                      </td>
+                      <td className="py-2 pr-4 font-medium text-text-primary">{a.vessel_name}</td>
+                      <td className="max-w-xs truncate py-2 pr-4 text-text-muted">{a.reason}</td>
+                      <td className="py-2 pr-4 tabular-nums text-text-muted">{a.confidence}%</td>
+                      <td className="py-2 text-text-muted">
+                        {new Date(a.created_at).toLocaleString(undefined, {
+                          month: "short", day: "numeric",
+                          hour: "2-digit", minute: "2-digit",
+                        })}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
 
       </div>

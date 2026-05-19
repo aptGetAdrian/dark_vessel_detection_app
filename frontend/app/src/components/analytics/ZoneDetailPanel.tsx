@@ -2,25 +2,7 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
 } from "recharts";
 import type { ZoneDetail } from "@/types/analytics";
-
-const SEVERITY_COLOR: Record<string, string> = {
-  CRITICAL: "#df6666",
-  WARNING: "#d4a24c",
-  INFO: "#7aaace",
-};
-
-const TYPE_COLORS = ["#7aaace", "#d4a24c", "#df6666", "#6abd8a", "#a07ace", "#c0c0c0"];
-
-const chartTooltipStyle = {
-  contentStyle: {
-    background: "#1a2330",
-    border: "1px solid #2a3442",
-    borderRadius: 8,
-    fontSize: 12,
-    color: "#f7f8f0",
-  },
-  cursor: { fill: "rgba(255,255,255,0.04)" },
-};
+import { SEVERITY_COLOR, TYPE_COLORS, chartTooltipStyle } from "@/lib/chartTheme";
 
 interface Props {
   detail: ZoneDetail;
@@ -45,7 +27,7 @@ export function ZoneDetailPanel({ detail, isLoading }: Props) {
     <div className="space-y-5">
       {/* Quick stats */}
       <div className="rounded-xl border border-border-subtle bg-bg-panel p-5 shadow-panel">
-        <p className="mb-4 text-xs font-semibold uppercase tracking-widest text-text-muted">
+        <p className="mb-4 text-xs font-semibold uppercase tracking-wide text-text-muted">
           {detail.name} — Summary
         </p>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -61,7 +43,7 @@ export function ZoneDetailPanel({ detail, isLoading }: Props) {
       {/* Vessel type breakdown */}
       {detail.vessel_type_breakdown?.length > 0 && (
         <div className="rounded-xl border border-border-subtle bg-bg-panel p-5 shadow-panel">
-          <p className="mb-4 text-xs font-semibold uppercase tracking-widest text-text-muted">
+          <p className="mb-4 text-xs font-semibold uppercase tracking-wide text-text-muted">
             Vessel Types in Zone
           </p>
           <ResponsiveContainer width="100%" height={140}>
@@ -82,7 +64,7 @@ export function ZoneDetailPanel({ detail, isLoading }: Props) {
       {/* Alert severity badges */}
       {detail.alert_severity_breakdown?.length > 0 && (
         <div className="rounded-xl border border-border-subtle bg-bg-panel p-5 shadow-panel">
-          <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-text-muted">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-text-muted">
             Alert Severity
           </p>
           <div className="flex flex-wrap gap-2">
@@ -105,7 +87,7 @@ export function ZoneDetailPanel({ detail, isLoading }: Props) {
       {/* Recent alerts */}
       {detail.recent_alerts?.length > 0 && (
         <div className="rounded-xl border border-border-subtle bg-bg-panel p-5 shadow-panel">
-          <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-text-muted">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-text-muted">
             Recent Alerts
           </p>
           <div className="space-y-2">

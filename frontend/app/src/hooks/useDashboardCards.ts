@@ -1,8 +1,16 @@
 import { useState, useEffect, useCallback } from "react";
 import { AlertTriangle, Activity, Map as MapIcon, Ship } from "lucide-react";
-import type { DashboardCard, Vessel } from "@/types/dashboard";
+import type { DashboardCard } from "@/types/dashboard";
 import { fetchJSON } from "@/lib/api";
 import { POLL_INTERVAL_MS, COVERAGE_AREA } from "@/lib/constants";
+
+interface StatsResponse {
+  total_vessels: number;
+  dark_vessels: number;
+  active_alerts: number;
+  critical_alerts: number;
+  last_updated: string;
+}
 
 const SNAPSHOT_KEY = "dv_card_snapshot";
 const SNAPSHOT_MIN_AGE_MS = 5 * 60_000;
@@ -28,8 +36,7 @@ function saveSnapshot(values: Record<string, number>) {
 }
 
 function buildCards(
-  darkCount: number,
-  totalCount: number,
+  stats: StatsResponse,
   updatedAt: Date,
   baseline: Record<string, number> | null,
 ): DashboardCard[] {
@@ -37,15 +44,15 @@ function buildCards(
     {
       id: "active-vessels",
       title: "Active Dark Vessels",
-      value: darkCount,
+      value: stats.dark_vessels,
       icon: AlertTriangle,
       iconClass: "text-status-alert",
       iconBgClass: "bg-status-alert/12",
     },
     {
       id: "high-severity",
-      title: "High Severity Alerts",
-      value: darkCount,
+      title: "Critical Alerts",
+      value: stats.critical_alerts,
       icon: Activity,
       iconClass: "text-status-warning",
       iconBgClass: "bg-status-warning/12",
@@ -61,7 +68,7 @@ function buildCards(
     {
       id: "vessels-tracked",
       title: "Vessels Tracked",
-      value: totalCount,
+      value: stats.total_vessels,
       icon: Ship,
       iconClass: "text-accent",
       iconBgClass: "bg-accent-soft",
@@ -98,23 +105,21 @@ export function useDashboardCards(): UseDashboardCardsResult {
 
   const fetchAll = useCallback(async () => {
     try {
-      const [allVessels, darkVessels] = await Promise.all([
-        fetchJSON<Vessel[]>("/api/v1/vessels"),
-        fetchJSON<Vessel[]>("/api/v1/vessels/dark"),
-      ]);
+      const stats = await fetchJSON<StatsResponse>("/api/v1/stats");
+      if (!stats) throw new Error("No stats returned");
 
       const now = new Date();
       const currentValues: Record<string, number> = {
-        "active-vessels": darkVessels.length,
-        "high-severity": darkVessels.length,
-        "vessels-tracked": allVessels.length,
+        "active-vessels": stats.dark_vessels,
+        "high-severity": stats.critical_alerts,
+        "vessels-tracked": stats.total_vessels,
       };
 
       const snap = loadSnapshot();
       const snapshotIsStale = !snap || (Date.now() - snap.ts) >= SNAPSHOT_MIN_AGE_MS;
 
       const baseline = snap?.values ?? null;
-      const newCards = buildCards(darkVessels.length, allVessels.length, now, baseline);
+      const newCards = buildCards(stats, now, baseline);
 
       setCards(newCards);
       setLastUpdated(now);

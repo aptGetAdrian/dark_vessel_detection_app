@@ -8,34 +8,8 @@ import { ZoneRankedBars } from "@/components/analytics/ZoneRankedBars";
 import { ZoneRadarChart } from "@/components/analytics/ZoneRadarChart";
 import { ZoneDetailPanel } from "@/components/analytics/ZoneDetailPanel";
 import { KpiStripSkeleton, ChartSkeleton } from "@/components/ui/Skeleton";
+import { KpiCard } from "@/components/ui/KpiCard";
 import type { ZoneMetric, TimeRange } from "@/types/analytics";
-
-function KpiCard({
-  icon,
-  label,
-  value,
-  sub,
-  color,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: number | string;
-  sub?: string;
-  color: string;
-}) {
-  return (
-    <div className="flex items-center gap-4 rounded-xl border border-border-subtle bg-bg-panel px-5 py-4 shadow-panel">
-      <div className={`flex size-10 shrink-0 items-center justify-center rounded-lg ${color}`}>
-        {icon}
-      </div>
-      <div>
-        <p className="text-xs text-text-muted">{label}</p>
-        <p className="text-2xl font-bold text-text-primary">{value}</p>
-        {sub && <p className="text-xs text-text-muted">{sub}</p>}
-      </div>
-    </div>
-  );
-}
 
 export function ZoneAnalyticsPage() {
   const [timeRange, setTimeRange] = useState<TimeRange>("48");
@@ -61,7 +35,7 @@ export function ZoneAnalyticsPage() {
 
   if (isLoading) {
     return (
-      <section className="min-h-[calc(100vh-3.75rem)] bg-bg-ocean px-6 py-6">
+      <section className="min-h-[calc(100vh-3.5rem)] bg-bg-ocean px-6 py-6">
         <div className="mx-auto max-w-7xl space-y-6">
           <KpiStripSkeleton />
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
@@ -74,7 +48,7 @@ export function ZoneAnalyticsPage() {
   }
 
   return (
-    <section className="min-h-[calc(100vh-3.75rem)] bg-bg-ocean px-6 py-6">
+    <section className="min-h-[calc(100vh-3.5rem)] bg-bg-ocean px-6 py-6">
       <div className="mx-auto max-w-7xl space-y-6">
         {/* Controls */}
         <div className="flex flex-wrap items-center justify-between gap-3">

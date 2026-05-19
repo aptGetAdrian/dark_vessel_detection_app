@@ -3,6 +3,7 @@ import {
   ResponsiveContainer, Tooltip,
 } from "recharts";
 import type { ZoneStats, ZoneDetail } from "@/types/analytics";
+import { chartTooltipStyle } from "@/lib/chartTheme";
 
 interface Props {
   detail: ZoneDetail | null;
@@ -33,7 +34,7 @@ export function ZoneRadarChart({ detail, allZones }: Props) {
 
   return (
     <div className="rounded-xl border border-border-subtle bg-bg-panel p-5 shadow-panel">
-      <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-text-muted">
+      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">
         Zone Profile — {detail.name}
       </p>
       <ResponsiveContainer width="100%" height={250}>
@@ -54,15 +55,7 @@ export function ZoneRadarChart({ detail, allZones }: Props) {
             fill="#7aaace"
             fillOpacity={0.3}
           />
-          <Tooltip
-            contentStyle={{
-              background: "#1a2330",
-              border: "1px solid #2a3442",
-              borderRadius: 8,
-              fontSize: 12,
-              color: "#f7f8f0",
-            }}
-          />
+          <Tooltip {...chartTooltipStyle} />
         </RadarChart>
       </ResponsiveContainer>
     </div>
